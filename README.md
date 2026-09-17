@@ -11,10 +11,14 @@ leaky integrate-and-fire(LIF) 모델로 실시간 시뮬레이션하고, WebGL �
 
 ## 실행 방법
 
-데이터가 저장소에 포함되어 있어서 바로 실행됩니다 (별도 빌드 불필요):
-
 ```bash
-cd web
+# 1) 커넥톰 데이터 준비 (web/data/ 가 비어 있는 경우 한 번만, 수 분 소요)
+cd pipeline
+pip install pandas numpy
+python3 build_dataset.py --download --src flywire_csv --out ../web/data
+
+# 2) 정적 서버로 실행
+cd ../web
 python3 -m http.server 8000
 # 브라우저에서 http://localhost:8000 접속
 ```
@@ -34,7 +38,7 @@ web/index.html              UI (한국어)
 web/js/sim-worker.js        LIF 시뮬레이션 (Web Worker, 139k 뉴런 실시간)
 web/js/render.js            WebGL1 포인트 클라우드 렌더러 (의존성 없음)
 web/js/main.js              데이터 로드 + 오케스트레이션
-web/data/                   변환된 커넥톰 (~18MB: CSR 인접 구조 + 좌표 + 분류)
+web/data/                   변환된 커넥톰 (~18MB: CSR 인접 구조 + 좌표 + 분류, 생성물)
 ```
 
 ### 시뮬레이션 모델
@@ -50,16 +54,10 @@ sensorimotor processing")의 관례를 단순화한 LIF 모델:
   회로가 한 번 점화되면 영구 폭주하므로, 발화할수록 임계값이 올라갔다가 서서히
   복귀하게 해서 자극을 끄면 활동이 소멸하도록 했습니다
 
-### 데이터 재생성
+### 데이터 파이프라인
 
-```bash
-cd pipeline
-pip install pandas numpy
-python3 build_dataset.py --download --src flywire_csv --out ../web/data
-```
-
-공개 버킷(`storage.googleapis.com/flywire-data/codex/data/fafb/783`)에서 약 60MB를
-내려받아 처리합니다 (수 분 소요).
+`build_dataset.py`는 공개 버킷(`storage.googleapis.com/flywire-data/codex/data/fafb/783`)에서
+약 60MB의 CSV를 내려받아 브라우저용 바이너리(~18MB)로 변환합니다.
 
 ## 데이터 출처와 인용
 
