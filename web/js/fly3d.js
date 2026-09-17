@@ -7,6 +7,7 @@ const BOUND = 3.6;        // 걸어다닐 수 있는 x 범위
 const BED_POS = -2.55;    // 침대 위치
 const MATTRESS_TOP = 0.78;
 const PUDDLE_X = 3.0;     // 쏟아진 와인 위치
+const TUB_POS = -0.55;    // 욕조 위치
 
 function bandTexture() {
   // 복부 텍스처. 구를 rotateZ(90°)로 눕혔으므로 몸축 방향이 v(위도)다:
@@ -128,6 +129,8 @@ export class Fly3D {
     this.spill = 0;
     this.standT = 0;           // 난간에 기대 서 있는 정도 0..1
     this.balconyO = 0;
+    this.bathT = 0;            // 욕조에 들어가 있는 정도 0..1
+    this.tubO = 0;
     this.rates = { fwd: 0, back: 0, jump: 0, prob: 0, dn: 0, motor: 0, brain: 0 };
     this.s = { fwd: 0, back: 0, jump: 0, prob: 0 };
     this.behavior = '대기';
@@ -233,26 +236,27 @@ export class Fly3D {
 
     // 복부: 매끈한 방추형 회전체 — 가슴 쪽에서 불룩했다가 꼬리로 뾰족해진다
     const prof = [];
+    // 날렵한 유선형: 최대 반경을 줄이고 더 길게 테이퍼
     const profPts = [
-      [0.02, 0], [0.55, 0.06], [0.86, 0.5], [1.02, 1.05], [1.04, 1.55],
-      [0.94, 2.05], [0.72, 2.55], [0.45, 2.95], [0.2, 3.2], [0.02, 3.32],
+      [0.02, 0], [0.4, 0.06], [0.64, 0.5], [0.78, 1.05], [0.8, 1.6],
+      [0.7, 2.1], [0.53, 2.6], [0.33, 3.0], [0.15, 3.25], [0.02, 3.4],
     ];
     for (const [r, y] of profPts) prof.push(new THREE.Vector2(r, y));
     const abdGeo = new THREE.LatheGeometry(prof, 40);
-    abdGeo.translate(0, -3.32, 0);                   // 끝(꼬리)을 원점 기준으로
+    abdGeo.translate(0, -3.4, 0);                    // 끝(꼬리)을 원점 기준으로
     abdGeo.rotateZ(-Math.PI / 2);                    // +X가 머리 방향, 밴드는 v 방향
     this.abd = M(abdGeo, bodyMat);
-    this.abd.scale.set(1.02, 0.96, 0.9);
-    this.abd.position.set(0.32, 0.33, 0);            // 앞끝을 가슴 속에 파묻는다
-    this.abd.rotation.z = -0.16;                     // 꼬리가 살짝 내려가게
+    this.abd.scale.set(1.06, 0.85, 0.72);
+    this.abd.position.set(0.34, 0.36, 0);            // 앞끝을 가슴 속에 파묻는다
+    this.abd.rotation.z = -0.12;                     // 꼬리가 살짝 내려가게
 
-    this.thx = M(new THREE.SphereGeometry(0.88, 40, 28), thxMat);
-    this.thx.scale.set(1.0, 0.95, 0.86);
-    this.thx.position.set(0.42, 0.36, 0);
+    this.thx = M(new THREE.SphereGeometry(0.8, 40, 28), thxMat);
+    this.thx.scale.set(1.0, 0.95, 0.8);
+    this.thx.position.set(0.45, 0.4, 0);
     // 소순판(scutellum): 가슴 뒤쪽의 작은 혹
-    const scu = M(new THREE.SphereGeometry(0.34, 20, 14), thxMat);
+    const scu = M(new THREE.SphereGeometry(0.3, 20, 14), thxMat);
     scu.scale.set(1.1, 0.7, 0.9);
-    scu.position.set(-0.28, 0.82, 0);
+    scu.position.set(-0.2, 0.82, 0);
 
     this.head = M(new THREE.SphereGeometry(0.5, 32, 24), headMat);
     this.head.scale.set(0.78, 0.98, 0.85);
@@ -322,7 +326,7 @@ export class Fly3D {
     this.wings = [];
     for (const sz of [-1, 1]) {
       const hinge = new THREE.Group();
-      hinge.position.set(0.55, 1.0, sz * 0.13);
+      hinge.position.set(0.5, 1.18, sz * 0.2);       // 복부 위로 띄워 파묻힘 방지
       fly.add(hinge);
       const wmat = new THREE.MeshStandardMaterial({
         color: 0xdfe6f2, transparent: true, opacity: 0.45, side: THREE.DoubleSide,
@@ -341,7 +345,7 @@ export class Fly3D {
         const vg = new THREE.BufferGeometry().setFromPoints(curve.getPoints(20));
         w.add(new THREE.Line(vg, vmat));
       }
-      hinge.rotation.y = sz * 0.13;
+      hinge.rotation.y = sz * 0.17;
       this.wings.push({ hinge, sz });
     }
 
@@ -495,6 +499,41 @@ export class Fly3D {
     building.position.set(2, 5.6, -7.3);
     balG.add(building);
     scene.add(mkFadeGroup(balG));
+
+    // ── 욕조 (만취 반신욕 씬) ──────────────────
+    const tubG = this.tubG = new THREE.Group();
+    const tubMat = new THREE.MeshStandardMaterial({ color: 0xe9edf5, roughness: 0.35, side: THREE.DoubleSide });
+    const shell = new THREE.Mesh(new THREE.CylinderGeometry(1.02, 0.78, 0.85, 28, 1, true), tubMat);
+    shell.scale.set(1.55, 1, 0.85);
+    shell.position.y = 0.52;
+    shell.castShadow = true;
+    const rimT = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.085, 12, 36), tubMat);
+    rimT.rotation.x = Math.PI / 2;
+    rimT.scale.set(1.55, 0.85, 1);
+    rimT.position.y = 0.95;
+    const tubBottom = new THREE.Mesh(new THREE.CircleGeometry(0.8, 28), tubMat);
+    tubBottom.rotation.x = -Math.PI / 2;
+    tubBottom.scale.set(1.55, 0.85, 1);
+    tubBottom.position.y = 0.12;
+    this.waterMesh = new THREE.Mesh(new THREE.CircleGeometry(0.97, 28),
+      new THREE.MeshStandardMaterial({ color: 0x59b6d8, transparent: true, opacity: 0.72, roughness: 0.15 }));
+    this.waterMesh.rotation.x = -Math.PI / 2;
+    this.waterMesh.scale.set(1.5, 0.8, 1);
+    this.waterMesh.position.y = 0.78;
+    this.waterMesh.renderOrder = 5;
+    this.waterMesh.material.depthWrite = false;
+    for (const [fx2, fz2] of [[-1.25, 0.55], [1.25, 0.55], [-1.25, -0.55], [1.25, -0.55]]) {
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), tubMat);
+      foot.position.set(fx2, 0.1, fz2);
+      tubG.add(foot);
+    }
+    const tubGlass = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.075, 0.26, 14, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0xdfe8fa, roughness: 0.15, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+    tubGlass.position.set(1.15, 1.08, 0.45);
+    tubG.add(shell, rimT, tubBottom, this.waterMesh, tubGlass);
+    tubG.position.set(TUB_POS, 0, 0.05);
+    scene.add(mkFadeGroup(tubG));
   }
 
   setRates(r) { Object.assign(this.rates, r); }
@@ -546,7 +585,8 @@ export class Fly3D {
     const flying = this.flightT > 0 && upright > 0.6;
 
     // 와인 홀짝: 쏟아진 와인이 있고 적당히 취했을 때 웅덩이로 걸어가 마신다
-    const wantSip = this.spill > 0.7 && eth > 0.45 && upright > 0.7 &&
+    // (0.62를 넘으면 욕조 반신욕으로 넘어간다)
+    const wantSip = this.spill > 0.7 && eth > 0.45 && eth <= 0.62 && upright > 0.7 &&
                     !flying && this.jumpT < 0 && !feeding && Math.abs(speed) < 0.1;
     let sipping = false, sipWalk = 0;
     if (wantSip) {
@@ -556,10 +596,24 @@ export class Fly3D {
     }
     this.sip += ((sipping ? 1 : 0) - this.sip) * Math.min(1, dt * 3);
 
-    // 난간 흡연: 니코틴이 있으면 난간으로 걸어가 두 발로 서서 태운다
+    // 욕조 반신욕: 만취 구간(0.62~0.85)이면 욕조로 걸어가 몸을 담근다
+    const wantBath = eth > 0.62 && upright > 0.7 && !flying && this.jumpT < 0 && !feeding;
+    let bathWalk = 0, bathing = false;
+    if (wantBath) {
+      const dxb = TUB_POS - this.x;
+      if (Math.abs(dxb) > 0.15 && this.bathT < 0.3) { bathWalk = Math.sign(dxb); this.dir = Math.sign(dxb) || 1; }
+      else { bathing = true; this.dir = 1; }
+    }
+    this.bathT += ((bathing ? 1 : 0) - this.bathT) * Math.min(1, dt * 2);
+    this.tubO += (((eth > 0.62 && this.passT < 0.3) ? 1 : 0) - this.tubO) * Math.min(1, dt * 2);
+    this._fade(this.tubG, this.tubO);
+    this.waterMesh.position.y = 0.78 + Math.sin(this.t * 2.4) * 0.012;
+
+    // 난간 흡연: 니코틴이 있으면 난간으로 걸어가 두 발로 서서 태운다 (욕조 중엔 안 함)
     const STAND_X = 0.62;
     const wantStand = this.nic > 0.2 && upright > 0.7 && !flying && this.jumpT < 0 &&
-                      !sipping && sipWalk === 0 && !feeding && Math.abs(speed) < 0.12;
+                      !sipping && sipWalk === 0 && !feeding && Math.abs(speed) < 0.12 &&
+                      !wantBath && this.bathT < 0.2;
     let standWalk = 0, standing = false;
     if (wantStand) {
       const dxs = STAND_X - this.x;
@@ -577,7 +631,8 @@ export class Fly3D {
 
     // 그루밍: 한가할 때 가끔 앞다리를 비빈다
     const idle = !walkingLikely(speed, sipWalk) && !flying && this.jumpT < 0 &&
-                 upright > 0.9 && !feeding && !sipping && this.hicT <= 0 && this.standT < 0.2;
+                 upright > 0.9 && !feeding && !sipping && this.hicT <= 0 &&
+                 this.standT < 0.2 && this.bathT < 0.2;
     function walkingLikely(sp, sw) { return Math.abs(sp) > 0.06 || sw !== 0; }
     if (idle && this.groomT <= 0 && Math.random() < dt * 0.12) this.groomT = 2.6;
     if (!idle) this.groomT = 0;
@@ -604,7 +659,9 @@ export class Fly3D {
     // ── 이동 ─────────────────────────────────
     let vx = 0;
     if (this.jumpT < 0 && upright > 0.6 && !flying) {
-      vx = ((sipWalk || standWalk) !== 0 ? (sipWalk || standWalk) * 1.3 : speed * 2.3 * this.dir) * upright * (1 - this.standT);
+      const propWalk = sipWalk || standWalk || bathWalk;
+      vx = (propWalk !== 0 ? propWalk * 1.3 : speed * 2.3 * this.dir) * upright *
+           (1 - this.standT) * (1 - this.bathT);
       if (eth > 0.1) {
         this._staggerVx += (Math.random() - 0.5) * eth * 6.5 * dt;
         this._staggerVx *= 1 - Math.min(1, dt * 2.5);
@@ -614,13 +671,15 @@ export class Fly3D {
     if (flying) vx = (0 - this.x) * 0.35 + Math.sin(this.t * 2.3) * 0.7;
     this.x += vx * dt;
     if (this.standT > 0.3) this.x += (STAND_X - this.x) * Math.min(1, dt * 4) * this.standT;
+    if (this.bathT > 0.3) this.x += (TUB_POS - this.x) * Math.min(1, dt * 4) * this.bathT;
     if (this.passT > 0.05) this.x += (BED_POS - this.x) * Math.min(1, dt * 2.5) * this.passT;
     if (this.x < -BOUND) { this.x = -BOUND; this.dir = 1; }
     if (this.x > BOUND) { this.x = BOUND; this.dir = -1; }
 
     // ── 자세 ─────────────────────────────────
-    const walking = (Math.abs(speed) > 0.06 || sipWalk !== 0 || standWalk !== 0) &&
-                    this.jumpT < 0 && upright > 0.6 && !flying && this.standT < 0.6;
+    const walking = (Math.abs(speed) > 0.06 || sipWalk !== 0 || standWalk !== 0 || bathWalk !== 0) &&
+                    this.jumpT < 0 && upright > 0.6 && !flying &&
+                    this.standT < 0.6 && this.bathT < 0.6;
     this.walkPhase += dt * (walking ? 10 + 14 * Math.max(Math.abs(speed), 0.5) : 1.2);
 
     let y = 1.18;
@@ -645,6 +704,8 @@ export class Fly3D {
     if (this.sip > 0.05) rotZ += this.sip * 0.22;   // 홀짝: 웅덩이로 숙임
     rotZ += this.standT * 0.88;                     // 난간: 두 발로 선다 (코 위로)
     y += this.standT * 0.95;
+    rotZ += this.bathT * 0.62;                      // 욕조: 뒤로 기대 반신욕
+    y -= this.bathT * 0.34;
     rotZ += this.passT * 0.35;
     y += this.passT * (MATTRESS_TOP + 0.62 - 1.18);
     if (this.passT > 0.3) y += Math.sin(this.t * 1.1) * 0.045;
@@ -659,6 +720,9 @@ export class Fly3D {
         swing = 0.5; femurDown = 1.9; knee = -0.35; splay = 0.85;
       } else if (this.jumpT >= 0 || flying) {       // 접기
         swing = -0.4; femurDown = 0.7; knee = -2.1; splay = 0.35;
+      } else if (this.bathT > 0.5) {                // 욕조: 앞다리는 테두리에, 나머진 물속
+        const st = [[0.95, 0.35, -0.5], [0.3, 0.8, -1.9], [-0.3, 0.9, -2.0]][leg.idx];
+        swing = st[0]; femurDown = st[1]; knee = st[2]; splay = 0.3;
       } else if (this.standT > 0.5) {               // 난간에 기대 섬
         // 몸이 0.88rad 젖혀지므로 다리 각도는 그만큼 되돌린다.
         // 앞다리: 난간 위에 걸침 / 중간: 몸 옆에 늘어짐 / 뒷다리: 바닥 지탱
@@ -691,9 +755,9 @@ export class Fly3D {
     // ── 날개 ─────────────────────────────────
     const flutter = (this.jumpT >= 0 || flying) ? 1 : (walking ? 0.12 : 0.025);
     const wa = Math.sin(this.t * 80) * (flying ? 0.9 : 0.5) * flutter;
-    const droop = this.passT * 0.55 + eth * upright * 0.08;
+    const droop = this.passT * 0.55 + eth * upright * 0.08 + this.bathT * 0.4;
     for (const { hinge, sz } of this.wings) {
-      hinge.rotation.y = sz * (0.13 + droop * 0.6) + wa * sz;
+      hinge.rotation.y = sz * (0.17 + droop * 0.6) + wa * sz;
       hinge.rotation.z = wa * 0.4 - droop * 0.25 + (flying ? 0.35 : 0);
     }
 
@@ -731,6 +795,7 @@ export class Fly3D {
       this.passT > 0.5 ? '침대에 뻗음 💫' :
       this.jumpT >= 0 ? '점프! ⚡' :
       flying ? '비행 🪽' :
+      this.bathT > 0.5 ? '욕조 반신욕 🛁🍷' :
       sipping || this.sip > 0.4 ? '와인 홀짝 🍷' :
       this.hicT > 0 ? '딸꾹! 🫧' :
       speed < -0.06 ? '문워크 🕺' :
