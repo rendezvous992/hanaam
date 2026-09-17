@@ -149,6 +149,31 @@ def build(src: Path, out: Path):
     for k, v in presets.items():
         print(f"  {k}: {len(v['idx']):,}개 뉴런")
 
+    # 행동 판독(readout)·명령 뉴런 그룹: 문헌에서 동정된 뉴런들의 커뮤니티 라벨 사용
+    def by_label_prefix(pattern):
+        ids = lab[lab["label"].str.match(pattern, case=False, na=False)]["root_id"].unique()
+        return sorted(index_of.loc[ids].tolist())
+
+    def by_super(name):
+        return sorted(index_of.loc[
+            cls[cls["super_class"] == name]["root_id"].to_numpy(dtype=np.uint64)].tolist())
+
+    readouts = {
+        # 전진 보행 명령 (Bidaye et al. 2020)
+        "fwd":   {"name_ko": "전진 (DNp09)",        "idx": by_label_prefix(r"DNp09")},
+        # 후진 보행 명령, 문워커 뉴런 (Bidaye et al. 2014)
+        "back":  {"name_ko": "문워크 (MDN)",         "idx": by_label(r"MDN \(Moonwalker")},
+        # 도약·탈출 반사 (Giant Fiber)
+        "jump":  {"name_ko": "점프 (Giant Fiber)",   "idx": by_label(r"giant fib")},
+        # 주둥이 뻗기: 주둥이 운동뉴런 (Sterne et al. 2021 라벨)
+        "prob":  {"name_ko": "주둥이 (운동뉴런)",     "idx": by_label(r"proboscis motor neuron|Motor neuron 9; MN9")},
+        # 전체 하행뉴런: 전반적 운동 신호
+        "dn":    {"name_ko": "하행뉴런 전체",         "idx": by_super("descending")},
+        "motor": {"name_ko": "운동뉴런 전체",         "idx": by_super("motor")},
+    }
+    for k, v in readouts.items():
+        print(f"  readout {k}: {len(v['idx']):,}개 뉴런")
+
     print("바이너리 저장 ...")
     (out / "positions_u16.bin").write_bytes(pos_u16.tobytes())
     (out / "group_u8.bin").write_bytes(group.tobytes())
@@ -167,6 +192,7 @@ def build(src: Path, out: Path):
         "n_edges": int(e),
         "super_classes": SUPER_CLASSES + ["unknown"],
         "presets": presets,
+        "readouts": readouts,
     }
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False))
     total = sum(f.stat().st_size for f in out.iterdir())

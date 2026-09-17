@@ -1,5 +1,9 @@
 // 앱 오케스트레이션: 데이터 로드 → 렌더러 + 시뮬레이션 워커 연결 → UI 바인딩
 import { BrainRenderer } from './render.js';
+import { Fly } from './fly.js';
+
+// 행동 판독 그룹 순서 (워커의 비트마스크 순서와 일치해야 함)
+const READOUT_KEYS = ['fwd', 'back', 'jump', 'prob', 'dn', 'motor'];
 
 const PALETTE = {
   optic:              [0.35, 0.45, 0.95],
@@ -18,9 +22,17 @@ const PALETTE = {
 const $ = id => document.getElementById(id);
 
 async function fetchBin(url) {
+  // 정적 서버에서는 .bin을 그대로, .bin을 서빙하지 못하는 호스팅(claude.ai
+  // 아티팩트 등)에서는 base64 텍스트(.b64.txt) 폴백을 읽는다.
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url}: ${r.status}`);
-  return r.arrayBuffer();
+  if (r.ok) return r.arrayBuffer();
+  const r2 = await fetch(url + '.b64.txt');
+  if (!r2.ok) throw new Error(`${url}: ${r.status}/${r2.status}`);
+  const s = (await r2.text()).replace(/\s+/g, '');
+  const bin = atob(s);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8.buffer;
 }
 
 async function main() {
@@ -45,11 +57,18 @@ async function main() {
 
     const renderer = new BrainRenderer($('brain'), new Uint16Array(posBuf), colors, n);
 
+    const readouts = READOUT_KEYS.map(k => (meta.readouts && meta.readouts[k]) ? meta.readouts[k].idx : []);
     const worker = new Worker('js/sim-worker.js');
     worker.postMessage({
       type: 'init', n,
       indptr: indptrBuf, targets: targetsBuf, weights: weightsBuf,
+      readouts,
     }, [indptrBuf, targetsBuf, weightsBuf]);
+
+    // ── 초파리 아바타 ──────────────────────────────────
+    const fly = new Fly($('fly-svg'));
+    const rates = { fwd: 0, back: 0, jump: 0, prob: 0, dn: 0, motor: 0 };
+    window.__fly = fly;   // 테스트용
 
     // ── 통계 + 스파크라인 ───────────────────────────────
     const spark = $('spark').getContext('2d');
@@ -61,6 +80,18 @@ async function main() {
       const glow = new Uint8Array(m.glow);
       renderer.updateGlow(glow);
       worker.postMessage({ type: 'buffer', buf: m.glow }, [m.glow]);
+
+      // 판독 그룹 발화율 (Hz/뉴런, 지수평활). brain = 전뇌 평균 —
+      // 전뇌 점화 파도에 휩쓸린 발화와 진짜 명령 신호를 구분하는 기준선.
+      if (m.counts && m.simMs > 0) {
+        const sec = m.simMs / 1000;
+        READOUT_KEYS.forEach((k, g) => {
+          const sz = readouts[g].length || 1;
+          rates[k] = rates[k] * 0.88 + (m.counts[g] / sz / sec) * 0.12;
+        });
+        rates.brain = (rates.brain || 0) * 0.88 + (m.spikes / n / sec) * 0.12;
+        fly.setRates(rates);
+      }
 
       const rate = m.simMs > 0 ? m.spikes / (m.simMs / 1000) : 0;
       emaRate = emaRate * 0.9 + rate * 0.1;
@@ -97,6 +128,30 @@ async function main() {
       stimBox.appendChild(b);
     }
 
+    // ── 행동 제어: 명령 뉴런 자극 (꾹 누르는 동안) ──────
+    const cmdBox = $('commands');
+    const CMDS = [
+      ['fwd', '⏩ 전진', 'DNp09 ×' + readouts[0].length],
+      ['back', '🕺 문워크', 'MDN ×' + readouts[1].length],
+      ['jump', '⚡ 점프', 'Giant Fiber ×' + readouts[2].length],
+      ['prob', '👅 주둥이', '운동뉴런 ×' + readouts[3].length],
+    ];
+    CMDS.forEach(([key, label, sub], i) => {
+      const b = document.createElement('button');
+      b.className = 'stim cmd';
+      b.innerHTML = `${label}<span>${sub}</span>`;
+      const set = on => {
+        b.classList.toggle('on', on);
+        worker.postMessage({ type: 'stim', key: 'cmd-' + key, on, rate: 130,
+                             indices: readouts[READOUT_KEYS.indexOf(key)] });
+      };
+      b.addEventListener('pointerdown', e => { e.preventDefault(); set(true); });
+      b.addEventListener('pointerup', () => set(false));
+      b.addEventListener('pointerleave', () => set(false));
+      b.addEventListener('contextmenu', e => e.preventDefault());
+      cmdBox.appendChild(b);
+    });
+
     // ── 슬라이더 / 버튼 ───────────────────────────────
     const send = p => worker.postMessage({ type: 'params', ...p });
     $('rate').oninput = e => {
@@ -106,8 +161,17 @@ async function main() {
     $('ethanol').oninput = e => {
       const v = +e.target.value / 100;
       $('ethanol-val').textContent = v === 0 ? '맨정신' :
-        v < 0.3 ? '알딸딸 🍺' : v < 0.6 ? '취함 🍺🍺' : '만취 🍺🍺🍺';
+        v < 0.3 ? '알딸딸 🍺' : v < 0.6 ? '취함 🍺🍺' :
+        v < 0.85 ? '만취 🍺🍺🍺' : '필름 끊김 💫';
       send({ ethanol: v });
+      fly.setEthanol(v);
+    };
+    $('nicotine').oninput = e => {
+      const v = +e.target.value / 100;
+      $('nic-val').textContent = v === 0 ? '안 피움' :
+        v < 0.35 ? '한 모금 🚬' : v < 0.7 ? '체인스모커 🚬🚬' : '골초 🚬🚬🚬';
+      send({ nicotine: v });
+      fly.setNicotine(v);
     };
     $('speed').oninput = e => {
       $('speed-val').textContent = '×' + e.target.value;
@@ -126,9 +190,12 @@ async function main() {
     };
 
     // ── 렌더 루프 ─────────────────────────────────────
+    const caption = $('fly-caption');
     let last = performance.now();
     const frame = (now) => {
-      renderer.draw((now - last) / 1000);
+      const dt = Math.min(0.1, (now - last) / 1000);
+      renderer.draw(dt);
+      caption.textContent = fly.update(dt);
       last = now;
       requestAnimationFrame(frame);
     };

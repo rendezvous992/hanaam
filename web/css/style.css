@@ -55,6 +55,32 @@ header {
 header h1 { font-size: 26px; letter-spacing: -0.5px; }
 header p { color: var(--dim); font-size: 13px; margin-top: 6px; max-width: 420px; }
 
+#fly-stage {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  width: 360px;
+  z-index: 2;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 10px 14px 6px;
+}
+#fly-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 2px;
+}
+#fly-head span { font-size: 11px; color: var(--dim); }
+#fly-head b { font-size: 14px; color: var(--accent); }
+#fly-svg { width: 100%; aspect-ratio: 380 / 240; }
+
+#commands { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+button.cmd { user-select: none; -webkit-user-select: none; touch-action: none; }
+button.cmd.on { background: #58230f; border-color: #ff8a5e; box-shadow: 0 0 12px rgba(255, 138, 94, .35); }
+
 #panel {
   position: fixed;
   top: 20px;
@@ -140,6 +166,14 @@ footer a { color: #9db4ff; text-decoration: none; }
     right: 12px;
     bottom: 12px;
     width: auto;
-    max-height: 46vh;
+    max-height: 42vh;
+  }
+  #fly-stage {
+    left: 12px;
+    right: auto;
+    top: 56px;
+    bottom: auto;
+    width: 220px;
+    padding: 6px 10px 2px;
   }
 }

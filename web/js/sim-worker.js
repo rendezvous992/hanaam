@@ -9,9 +9,13 @@
 let n = 0;
 let indptr, targets, weights;   // CSR
 let v, refr, glow, ad;          // 상태 (ad: 적응형 임계값 증분)
+let readoutMask = null;         // 뉴런별 비트마스크: 어떤 판독 그룹 소속인지
+let readoutCounts = null;       // 그룹별 프레임 내 스파이크 수
+let nReadouts = 0;
 let stimActive = {};            // key -> Uint32Array (뉴런 인덱스)
 let stimRate = 50;              // Hz, 자극 뉴런의 강제 발화율
 let ethanol = 0;                // 0..1
+let nicotine = 0;               // 0..1 — 니코틴성 ACh 수용체 작용제 근사: 흥분성 시냅스 증폭
 let ticksPerFrame = 6;
 let running = true;
 
@@ -52,13 +56,23 @@ onmessage = (e) => {
     refr = new Uint8Array(n);
     glow = new Float32Array(n);
     ad = new Float32Array(n);
+    if (m.readouts) {           // [[idx...], ...] 순서 = 비트 순서 (최대 8그룹)
+      nReadouts = m.readouts.length;
+      readoutMask = new Uint8Array(n);
+      m.readouts.forEach((idx, g) => {
+        for (const i of idx) readoutMask[i] |= (1 << g);
+      });
+      readoutCounts = new Float64Array(nReadouts);
+    }
     loop();
   } else if (m.type === 'stim') {
-    if (m.on) stimActive[m.key] = new Uint32Array(m.indices);
+    // rate 미지정 시 전역 stimRate 사용 (명령 뉴런은 강한 고정 자극)
+    if (m.on) stimActive[m.key] = { idx: new Uint32Array(m.indices), rate: m.rate || 0 };
     else delete stimActive[m.key];
   } else if (m.type === 'params') {
     if (m.stimRate !== undefined) stimRate = m.stimRate;
     if (m.ethanol !== undefined) ethanol = m.ethanol;
+    if (m.nicotine !== undefined) nicotine = m.nicotine;
     if (m.speed !== undefined) ticksPerFrame = m.speed;
     if (m.running !== undefined) running = m.running;
   } else if (m.type === 'reset') {
@@ -75,8 +89,10 @@ function step() {
   // 에탄올 곡선: 저용량 임계값↓(들뜸), 고용량 임계값↑(진정)
   const thrEff = THR * (1 - 0.25 * eth + 1.6 * Math.max(0, eth - 0.55));
   const inhBoost = 1 + 1.2 * eth;          // GABA/GLUT 강화
-  const noiseAmp = 6 * eth;                // 막 노이즈
-  const noiseFrac = eth > 0 ? 0.08 : 0;    // 노이즈 받는 뉴런 비율/tick
+  // 니코틴: 초파리 뇌의 주 흥분성 전달물질이 ACh라서, 흥분성 시냅스를 증폭시킨다
+  const excBoost = 1 + 0.6 * nicotine;
+  const noiseAmp = 6 * eth + 2 * nicotine; // 막 노이즈
+  const noiseFrac = (eth > 0 || nicotine > 0) ? 0.08 : 0;
 
   // 1) 누수(감쇠) + 적응 회복
   for (let i = 0; i < n; i++) {
@@ -94,10 +110,12 @@ function step() {
     }
   }
 
-  // 3) 외부 자극: 각 자극 뉴런이 stimRate Hz 포아송 발화
-  const p = stimRate * DT / 1000;
+  // 3) 외부 자극: 각 자극 뉴런이 지정 Hz로 포아송 발화
+  const p0 = stimRate * DT / 1000;
   for (const key in stimActive) {
-    const idx = stimActive[key];
+    const s = stimActive[key];
+    const p = s.rate ? s.rate * DT / 1000 : p0;
+    const idx = s.idx;
     for (let k = 0; k < idx.length; k++) {
       const i = idx[k];
       if (frand() < p) v[i] = thrEff + ad[i] + 1;
@@ -113,10 +131,14 @@ function step() {
       refr[i] = REFR_TICKS;
       ad[i] += ADAPT_INC;
       glow[i] = 1;
+      if (readoutMask !== null && readoutMask[i]) {
+        const mb = readoutMask[i];
+        for (let g = 0; g < nReadouts; g++) if (mb & (1 << g)) readoutCounts[g]++;
+      }
       const a = indptr[i], b = indptr[i + 1];
       for (let j = a; j < b; j++) {
         let w = weights[j];
-        if (w < 0) w *= inhBoost;
+        w *= (w < 0) ? inhBoost : excBoost;
         v[targets[j]] += w;
       }
     } else if (v[i] < V_MIN) {
@@ -144,6 +166,8 @@ function loop() {
     if (g > 0.5) active++;
   }
   const simMs = running ? ticksPerFrame * DT : 0;
+  const counts = readoutCounts ? Array.from(readoutCounts) : null;
+  if (readoutCounts) readoutCounts.fill(0);
   postMessage({
     type: 'frame',
     glow: buf.buffer,
@@ -152,6 +176,7 @@ function loop() {
     spikes: frameSpikes,
     simMs,
     active,
+    counts,
   }, [buf.buffer]);
 
   setTimeout(loop, 12);
