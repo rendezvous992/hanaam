@@ -59,7 +59,7 @@ header p { color: var(--dim); font-size: 13px; margin-top: 6px; max-width: 420px
   position: fixed;
   left: 20px;
   bottom: 20px;
-  width: 360px;
+  width: 420px;
   z-index: 2;
   background: var(--panel);
   backdrop-filter: blur(14px);
