@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>가상 초파리 뇌 — FlyWire 커넥톰 시뮬레이터</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪰</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="brain"></canvas>
+
+<div id="loading">초기화 중…</div>
+
+<header>
+  <h1>🪰 가상 초파리 뇌</h1>
+  <p>실제 초파리 커넥톰(FlyWire v783) — 뉴런 139,255개 · 시냅스 연결 270만 쌍의 실시간 스파이킹 시뮬레이션</p>
+</header>
+
+<aside id="panel">
+  <section>
+    <h2>감각 자극</h2>
+    <p class="hint">버튼을 눌러 실제 감각 뉴런을 자극해 보세요. 활동이 뇌 전체로 퍼집니다.</p>
+    <div id="stimuli"></div>
+    <label>자극 강도 <span id="rate-val">50 Hz</span>
+      <input id="rate" type="range" min="5" max="200" value="50">
+    </label>
+  </section>
+
+  <section>
+    <h2>🍺 에탄올</h2>
+    <p class="hint">장난스러운 근사 모델: 저용량에서 들뜸(노이즈·과활동), 고용량에서 억제 강화·진정.</p>
+    <label><span id="ethanol-val">맨정신</span>
+      <input id="ethanol" type="range" min="0" max="100" value="0">
+    </label>
+  </section>
+
+  <section>
+    <h2>시뮬레이션</h2>
+    <div class="row">
+      <button id="pause">⏸ 일시정지</button>
+      <button id="reset">↺ 리셋</button>
+      <button id="rotate" class="on">🔄 자동회전</button>
+    </div>
+    <label>속도 <span id="speed-val">×6</span>
+      <input id="speed" type="range" min="1" max="20" value="6">
+    </label>
+    <div class="stats">
+      <div><b id="stat-time">0.00 s</b><span>시뮬레이션 시간</span></div>
+      <div><b id="stat-rate">0</b><span>스파이크/초</span></div>
+      <div><b id="stat-active">0</b><span>활성 뉴런</span></div>
+    </div>
+    <canvas id="spark" width="240" height="48"></canvas>
+  </section>
+
+  <footer>
+    데이터: <a href="https://codex.flywire.ai" target="_blank" rel="noopener">FlyWire Connectome v783</a>
+    (Dorkenwald et al. 2024; Schlegel et al. 2024) ·
+    모델: LIF, Shiu et al. 2024 단순화 · 드래그로 회전, 휠로 확대
+  </footer>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
