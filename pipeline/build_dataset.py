@@ -33,6 +33,7 @@ import numpy as np
 import pandas as pd
 
 BUCKET = "https://storage.googleapis.com/flywire-data/codex/data/fafb/783"
+SKEL_BUCKET = "https://storage.googleapis.com/flywire-data/codex/skeletons/fafb/lod1"
 FILES = [
     "classification.csv.gz",
     "neurons.csv.gz",
@@ -174,6 +175,55 @@ def build(src: Path, out: Path):
     for k, v in readouts.items():
         print(f"  readout {k}: {len(v['idx']):,}개 뉴런")
 
+    # ── 뉴런 스켈레톤(모폴로지): 주요 뉴런의 실제 3D 가지 형태 ──
+    # 릴스/논문 시각화처럼 뉴런을 실뭉치 형태로 그리기 위해 lod1 SWC를 받는다.
+    print("스켈레톤 다운로드 (주요 뉴런) ...")
+    skel_groups = [
+        ("sugar", presets["sugar"]["idx"]), ("bitter", presets["bitter"]["idx"]),
+        ("fwd", readouts["fwd"]["idx"]), ("back", readouts["back"]["idx"]),
+        ("jump", readouts["jump"]["idx"]), ("prob", readouts["prob"]["idx"]),
+    ]
+    skel_neurons = []          # [{i: 전역 인덱스, g: 그룹, s: 시작 정점, c: 정점 수}]
+    verts = []                 # (x,y,z) 라인 리스트 (2개씩 한 선분)
+    seen = set()
+    for gname, idxs in skel_groups:
+        for gi in idxs:
+            if gi in seen:
+                continue
+            seen.add(gi)
+            rid = int(root_ids[gi])
+            try:
+                with urllib.request.urlopen(f"{SKEL_BUCKET}/{rid}.swc", timeout=90) as rsp:
+                    txt = rsp.read().decode()
+            except Exception:
+                continue
+            nodes, edges = {}, []
+            for line in txt.splitlines():
+                if not line or line[0] == "#":
+                    continue
+                p = line.split()
+                nodes[int(p[0])] = (float(p[2]), float(p[3]), float(p[4]))
+                par = int(p[6])
+                if par != -1:
+                    edges.append((par, int(p[0])))
+            # 데시메이션: 큰 뉴런일수록 선분을 성기게 샘플링해 용량을 줄인다
+            if len(edges) > 4000: edges = edges[::5]
+            elif len(edges) > 1500: edges = edges[::3]
+            elif len(edges) > 500: edges = edges[::2]
+            start = len(verts)
+            for a, b in edges:
+                if a in nodes and b in nodes:
+                    verts.append(nodes[a]); verts.append(nodes[b])
+            cnt = len(verts) - start
+            if cnt > 0:
+                skel_neurons.append({"i": int(gi), "g": gname, "s": start, "c": cnt})
+    if verts:
+        sv = np.array(verts)
+        sv_u16 = np.clip((sv - lo) / (hi - lo) * 65535.0, 0, 65535).astype(np.uint16)
+        (out / "skel_pos_u16.bin").write_bytes(sv_u16.tobytes())
+        print(f"  스켈레톤 뉴런 {len(skel_neurons)}개, 정점 {len(verts):,}개 "
+              f"({len(verts) * 6 / 1e6:.1f} MB)")
+
     print("바이너리 저장 ...")
     (out / "positions_u16.bin").write_bytes(pos_u16.tobytes())
     (out / "group_u8.bin").write_bytes(group.tobytes())
@@ -193,6 +243,8 @@ def build(src: Path, out: Path):
         "super_classes": SUPER_CLASSES + ["unknown"],
         "presets": presets,
         "readouts": readouts,
+        "bbox": {"lo": lo.tolist(), "hi": hi.tolist()},
+        "skeletons": skel_neurons,
     }
     (out / "meta.json").write_text(json.dumps(meta, ensure_ascii=False))
     total = sum(f.stat().st_size for f in out.iterdir())

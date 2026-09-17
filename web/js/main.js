@@ -58,6 +58,18 @@ async function main() {
 
     const renderer = new BrainRenderer($('brain'), new Uint16Array(posBuf), colors, n);
 
+    // 뉴런 모폴로지(실제 3D 가지 형태) — 주요 뉴런 131개, 발화 시 번쩍임
+    // (?noskel 로 끌 수 있음 — GPU 없는 환경/테스트용)
+    renderer.showSkel = !location.search.includes('noskel');
+    $('skel').classList.toggle('on', renderer.showSkel);
+    const skelCap = location.search.match(/skelmax=(\d+)/);
+    if (skelCap) renderer.skelMax = +skelCap[1];
+    if (meta.skeletons && meta.skeletons.length) {
+      fetchBin('data/skel_pos_u16.bin')
+        .then(buf => renderer.setSkeletons(new Uint16Array(buf), meta.skeletons))
+        .catch(err => console.warn('스켈레톤 로드 실패:', err));
+    }
+
     const readouts = READOUT_KEYS.map(k => (meta.readouts && meta.readouts[k]) ? meta.readouts[k].idx : []);
     const worker = new Worker('js/sim-worker.js');
     worker.postMessage({
@@ -196,6 +208,10 @@ async function main() {
     $('rotate').onclick = () => {
       renderer.autoRotate = !renderer.autoRotate;
       $('rotate').classList.toggle('on', renderer.autoRotate);
+    };
+    $('skel').onclick = () => {
+      renderer.showSkel = !renderer.showSkel;
+      $('skel').classList.toggle('on', renderer.showSkel);
     };
 
     // ── 렌더 루프 ─────────────────────────────────────

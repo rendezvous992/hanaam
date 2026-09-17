@@ -33,6 +33,21 @@ void main() {
   gl_FragColor = vec4(c, 1.0);
 }`;
 
+// 뉴런 스켈레톤(모폴로지) 라인용 셰이더
+const VS_LINE = `
+attribute vec3 aPos;
+uniform mat4 uMVP;
+void main() {
+  vec3 p = aPos * 2.0 - 1.0;
+  p.y = -p.y;
+  gl_Position = uMVP * vec4(p, 1.0);
+}`;
+const FS_LINE = `
+precision mediump float;
+uniform vec3 uColor;
+uniform float uAlpha;
+void main() { gl_FragColor = vec4(uColor * uAlpha, 1.0); }`;
+
 function mat4Mul(a, b) {
   const o = new Float32Array(16);
   for (let c = 0; c < 4; c++)
@@ -63,22 +78,35 @@ export class BrainRenderer {
         throw new Error(gl.getShaderInfoLog(s));
       return s;
     };
-    const prog = gl.createProgram();
-    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
-    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
-      throw new Error(gl.getProgramInfoLog(prog));
+    const link = (vs, fs) => {
+      const p = gl.createProgram();
+      gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+      gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+        throw new Error(gl.getProgramInfoLog(p));
+      return p;
+    };
+    const prog = this.prog = link(VS, FS);
+    this.lineProg = link(VS_LINE, FS_LINE);
+    this.uMVPLine = gl.getUniformLocation(this.lineProg, 'uMVP');
+    this.uColorLine = gl.getUniformLocation(this.lineProg, 'uColor');
+    this.uAlphaLine = gl.getUniformLocation(this.lineProg, 'uAlpha');
+    this.aPosLine = gl.getAttribLocation(this.lineProg, 'aPos');
+    this.skel = null;
+    this.showSkel = true;
+    this.skelMax = Infinity;   // 저사양 검증용 정점 상한
     gl.useProgram(prog);
     this.uMVP = gl.getUniformLocation(prog, 'uMVP');
     this.uPointScale = gl.getUniformLocation(prog, 'uPointScale');
 
+    // 포인트/라인 프로그램을 오가므로 어트리뷰트는 매 프레임 재바인딩한다
+    this.pointAttribs = [];
     const attr = (name, buf, size, type, normalized, data) => {
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
       gl.bufferData(gl.ARRAY_BUFFER, data, name === 'aGlow' ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
       const loc = gl.getAttribLocation(prog, name);
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, size, type, normalized, 0, 0);
+      this.pointAttribs.push({ loc, buf, size, type, normalized });
     };
     attr('aPos', gl.createBuffer(), 3, gl.UNSIGNED_SHORT, true, positionsU16);
     attr('aColor', gl.createBuffer(), 3, gl.FLOAT, false, colorsF32);
@@ -128,6 +156,28 @@ export class BrainRenderer {
     this.dpr = dpr;
   }
 
+  // 뉴런 스켈레톤 등록: posU16 = 라인 리스트 정점, neurons = [{i, g, s, c}]
+  setSkeletons(posU16, neurons) {
+    const gl = this.gl;
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, posU16, gl.STATIC_DRAW);
+    const hsl = (h, s, l) => {
+      const f = (nn) => {
+        const k = (nn + h * 12) % 12;
+        return l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+      };
+      return [f(0), f(8), f(4)];
+    };
+    this.skel = {
+      buf,
+      neurons: neurons.map((nr, k) => ({
+        ...nr,
+        color: hsl((k * 0.61803) % 1, 0.8, 0.62),
+      })),
+    };
+  }
+
   updateGlow(u8) {
     this.glowData.set(u8);
     const gl = this.gl;
@@ -154,9 +204,32 @@ export class BrainRenderer {
     const trans = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -this.dist, 1]);
     const mvp = mat4Mul(proj, mat4Mul(trans, mat4Mul(rotXm, rotYm)));
 
+    gl.useProgram(this.prog);
+    for (const a of this.pointAttribs) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, a.buf);
+      gl.enableVertexAttribArray(a.loc);
+      gl.vertexAttribPointer(a.loc, a.size, a.type, a.normalized, 0, 0);
+    }
     gl.uniformMatrix4fv(this.uMVP, false, mvp);
     gl.uniform1f(this.uPointScale, 2.2 * this.dpr);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.POINTS, 0, this.n);
+
+    // 스켈레톤(모폴로지) 레이어: 발화하면 그 뉴런 전체가 밝아진다
+    if (this.skel && this.showSkel) {
+      gl.useProgram(this.lineProg);
+      gl.uniformMatrix4fv(this.uMVPLine, false, mvp);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.skel.buf);
+      gl.enableVertexAttribArray(this.aPosLine);
+      gl.vertexAttribPointer(this.aPosLine, 3, gl.UNSIGNED_SHORT, true, 0, 0);
+      let drawn = 0;
+      for (const nr of this.skel.neurons) {
+        if ((drawn += nr.c) > this.skelMax) break;
+        const g = this.glowData[nr.i] / 255;
+        gl.uniform3fv(this.uColorLine, nr.color);
+        gl.uniform1f(this.uAlphaLine, 0.28 + g * 1.6);
+        gl.drawArrays(gl.LINES, nr.s, nr.c);
+      }
+    }
   }
 }
