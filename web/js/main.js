@@ -165,6 +165,8 @@ async function main() {
         v < 0.85 ? '만취 🍺🍺🍺' : '필름 끊김 💫';
       send({ ethanol: v });
       fly.setEthanol(v);
+      $('fly-sub').textContent = v === 0 ? '행동 (뇌 → 몸)' :
+        `혈중 에탄올 ${(v * 0.4).toFixed(2)} g/dL`;
     };
     $('nicotine').oninput = e => {
       const v = +e.target.value / 100;
