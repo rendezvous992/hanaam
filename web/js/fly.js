@@ -283,7 +283,8 @@ export class Fly {
       this.s[key] += (raw - this.s[key]) * k2;
     }
     // GF는 2개뿐이라 잡음이 커서 임계값을 높게 잡는다 (명령 자극 수준에서만 점프)
-    const wantJump = this.s.jump > 80 && this.jumpCooldown <= 0 && !this.passedOut;
+    const wantJump = this.s.jump > 80 && this.s.jump > 1.15 * this.s.fwd &&
+                     this.s.jump > 1.15 * this.s.back && this.jumpCooldown <= 0 && !this.passedOut;
     // 섭식 vs 보행 우선순위: 더 강한 쪽이 이긴다 (섭식 중에는 실제 초파리도 멈춘다)
     const loco = Math.abs(this.s.fwd - this.s.back);
     const feeding = this.s.prob > 12 && this.s.prob > 0.55 * loco;

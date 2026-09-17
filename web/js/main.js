@@ -1,6 +1,7 @@
 // 앱 오케스트레이션: 데이터 로드 → 렌더러 + 시뮬레이션 워커 연결 → UI 바인딩
 import { BrainRenderer } from './render.js';
 import { Fly } from './fly.js';
+import { Fly3D } from './fly3d.js';
 
 // 행동 판독 그룹 순서 (워커의 비트마스크 순서와 일치해야 함)
 const READOUT_KEYS = ['fwd', 'back', 'jump', 'prob', 'dn', 'motor'];
@@ -65,8 +66,14 @@ async function main() {
       readouts,
     }, [indptrBuf, targetsBuf, weightsBuf]);
 
-    // ── 초파리 아바타 ──────────────────────────────────
-    const fly = new Fly($('fly-svg'));
+    // ── 초파리 아바타: 3D 우선, 실패 시 SVG 폴백 ────────
+    let fly;
+    try {
+      fly = new Fly3D($('fly-svg'));
+    } catch (err) {
+      console.warn('3D 아바타 초기화 실패, SVG로 폴백:', err);
+      fly = new Fly($('fly-svg'));
+    }
     const rates = { fwd: 0, back: 0, jump: 0, prob: 0, dn: 0, motor: 0 };
     window.__fly = fly;   // 테스트용
 

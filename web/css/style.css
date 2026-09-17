@@ -59,7 +59,7 @@ header p { color: var(--dim); font-size: 13px; margin-top: 6px; max-width: 420px
   position: fixed;
   left: 20px;
   bottom: 20px;
-  width: 420px;
+  width: min(560px, 46vw);
   z-index: 2;
   background: var(--panel);
   backdrop-filter: blur(14px);
@@ -75,7 +75,7 @@ header p { color: var(--dim); font-size: 13px; margin-top: 6px; max-width: 420px
 }
 #fly-head span { font-size: 11px; color: var(--dim); }
 #fly-head b { font-size: 14px; color: var(--accent); }
-#fly-svg { width: 100%; aspect-ratio: 380 / 240; }
+#fly-svg { width: 100%; aspect-ratio: 16 / 10; }
 
 #commands { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 button.cmd { user-select: none; -webkit-user-select: none; touch-action: none; }
