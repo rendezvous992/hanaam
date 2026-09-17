@@ -16,11 +16,11 @@ function bandTexture() {
   c.width = 128; c.height = 512;
   const g = c.getContext('2d');
   const base = g.createLinearGradient(0, 0, 0, 512);
-  base.addColorStop(0, '#ad8046');   // 꼬리 쪽 약간 어둡게
-  base.addColorStop(0.35, '#dbb87c');
-  base.addColorStop(1, '#ecd3a0');
+  base.addColorStop(0, '#bd9459');   // 꼬리 쪽 약간 어둡게
+  base.addColorStop(0.35, '#e2c48c');
+  base.addColorStop(1, '#f0dcae');
   g.fillStyle = base; g.fillRect(0, 0, 128, 512);
-  const bands = [[0.14, 30, 0.85], [0.26, 26, 0.8], [0.37, 20, 0.68], [0.47, 15, 0.5], [0.56, 11, 0.35]];
+  const bands = [[0.14, 30, 0.6], [0.26, 26, 0.55], [0.37, 20, 0.45], [0.47, 15, 0.34], [0.56, 11, 0.24]];
   for (const [vf, w, a] of bands) {
     g.fillStyle = `rgba(42,26,12,${a})`;
     g.beginPath(); g.ellipse(64, vf * 512, 96, w, 0, 0, Math.PI * 2); g.fill();
@@ -36,8 +36,8 @@ function thoraxTexture() {
   c.width = 128; c.height = 128;
   const g = c.getContext('2d');
   const grad = g.createLinearGradient(0, 0, 0, 128);
-  grad.addColorStop(0, '#8a4f22'); grad.addColorStop(0.42, '#a8683a');
-  grad.addColorStop(0.75, '#d9ab6b'); grad.addColorStop(1, '#ecd3a0');
+  grad.addColorStop(0, '#a86f3e'); grad.addColorStop(0.42, '#c08d54');
+  grad.addColorStop(0.75, '#e2ba7e'); grad.addColorStop(1, '#f0dcae');
   g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
   const t = new THREE.CanvasTexture(c);
   t.encoding = THREE.sRGBEncoding;
@@ -73,6 +73,26 @@ function wingTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+function windowTexture() {
+  // 밤 건물 외벽: 창문 격자, 대부분 꺼져 있고 몇 개만 따뜻하게 켜짐
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#0c1430'; g.fillRect(0, 0, 512, 256);
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let row = 0; row < 6; row++) {
+    for (let col = 0; col < 12; col++) {
+      const lit = rnd() < 0.14;
+      g.fillStyle = lit ? 'rgba(255,214,140,0.85)' : 'rgba(70,88,140,0.30)';
+      g.fillRect(14 + col * 42, 14 + row * 42, 26, 30);
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.encoding = THREE.sRGBEncoding;
+  return t;
+}
+
 function puffTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
@@ -106,6 +126,8 @@ export class Fly3D {
     this.bedO = 0;
     this.bottleO = 0;
     this.spill = 0;
+    this.standT = 0;           // 난간에 기대 서 있는 정도 0..1
+    this.balconyO = 0;
     this.rates = { fwd: 0, back: 0, jump: 0, prob: 0, dn: 0, motor: 0, brain: 0 };
     this.s = { fwd: 0, back: 0, jump: 0, prob: 0 };
     this.behavior = '대기';
@@ -140,7 +162,8 @@ export class Fly3D {
     cam.lookAt(0, 1.0, 0);
 
     // ── 조명 ─────────────────────────────────
-    scene.add(new THREE.HemisphereLight(0x8fa0d8, 0x181226, 0.5));
+    this.hemi = new THREE.HemisphereLight(0x8fa0d8, 0x181226, 0.5);
+    scene.add(this.hemi);
     const spot = new THREE.SpotLight(0xffd9a0, 1.15, 40, 0.62, 0.85, 1.4);
     spot.position.set(3.1, 7.2, 1.2);
     spot.castShadow = true;
@@ -151,6 +174,8 @@ export class Fly3D {
     const rim = new THREE.DirectionalLight(0x8fa8ff, 0.45);
     rim.position.set(-6, 4.5, -6);
     scene.add(rim);
+    this.spotL = spot;
+    this.rimL = rim;
 
     // ── 방 (바닥 + 벽 + 그리드) ────────────────
     const floor = new THREE.Mesh(
@@ -368,7 +393,9 @@ export class Fly3D {
       new THREE.SphereGeometry(0.055, 10, 8),
       new THREE.MeshBasicMaterial({ color: 0xff6a20 }));
     this.ember.position.set(0.52, 0.07, 0);
-    this.cigG.add(cigBody, this.ember);
+    this.cigLight = new THREE.PointLight(0xff9a40, 0, 2.6, 2);
+    this.cigLight.position.set(0.55, 0.12, 0.1);
+    this.cigG.add(cigBody, this.ember, this.cigLight);
     const ptex = puffTexture();
     this.puffs = [];
     for (let i = 0; i < 3; i++) {
@@ -443,6 +470,31 @@ export class Fly3D {
     bedG.add(frame, mattress, pillow, blanket);
     bedG.position.set(BED_POS, 0, 0.15);
     scene.add(mkFadeGroup(bedG));
+
+    // ── 발코니 (흡연 씬): 난간 + 밤 건물 배경 ──
+    const balG = this.balconyG = new THREE.Group();
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x2e3a58, roughness: 0.5, metalness: 0.5 });
+    const topRail = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 2.8, 12), railMat);
+    topRail.rotation.z = Math.PI / 2;
+    topRail.position.set(2.3, 1.34, 0.3);
+    topRail.castShadow = true;
+    balG.add(topRail);
+    const midRail = topRail.clone();
+    midRail.position.y = 0.72;
+    midRail.scale.set(0.7, 1, 0.7);
+    balG.add(midRail);
+    for (let i = 0; i < 6; i++) {
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.34, 10), railMat);
+      bar.position.set(1.05 + i * 0.5, 0.67, 0.3);
+      bar.castShadow = true;
+      balG.add(bar);
+    }
+    const building = new THREE.Mesh(
+      new THREE.PlaneGeometry(24, 12),
+      new THREE.MeshBasicMaterial({ map: windowTexture() }));
+    building.position.set(2, 5.6, -7.3);
+    balG.add(building);
+    scene.add(mkFadeGroup(balG));
   }
 
   setRates(r) { Object.assign(this.rates, r); }
@@ -504,9 +556,28 @@ export class Fly3D {
     }
     this.sip += ((sipping ? 1 : 0) - this.sip) * Math.min(1, dt * 3);
 
+    // 난간 흡연: 니코틴이 있으면 난간으로 걸어가 두 발로 서서 태운다
+    const STAND_X = 0.62;
+    const wantStand = this.nic > 0.2 && upright > 0.7 && !flying && this.jumpT < 0 &&
+                      !sipping && sipWalk === 0 && !feeding && Math.abs(speed) < 0.12;
+    let standWalk = 0, standing = false;
+    if (wantStand) {
+      const dxs = STAND_X - this.x;
+      if (Math.abs(dxs) > 0.15 && this.standT < 0.3) { standWalk = Math.sign(dxs); this.dir = Math.sign(dxs) || 1; }
+      else { standing = true; this.dir = 1; }        // 난간(오른쪽)을 본다
+    }
+    this.standT += ((standing ? 1 : 0) - this.standT) * Math.min(1, dt * 2.2);
+    this.balconyO += ((this.nic > 0.2 ? 1 : 0) - this.balconyO) * Math.min(1, dt * 1.8);
+    this._fade(this.balconyG, this.balconyO);
+    // 조명 무드: 흡연 씬에서 차가운 밤 + 어두운 웜라이트
+    const mood = Math.max(this.standT, this.balconyO * 0.7);
+    this.hemi.intensity = 0.5 - 0.17 * mood;
+    this.spotL.intensity = 1.15 - 0.6 * mood;
+    this.rimL.intensity = 0.45 + 0.32 * mood;
+
     // 그루밍: 한가할 때 가끔 앞다리를 비빈다
     const idle = !walkingLikely(speed, sipWalk) && !flying && this.jumpT < 0 &&
-                 upright > 0.9 && !feeding && !sipping && this.hicT <= 0;
+                 upright > 0.9 && !feeding && !sipping && this.hicT <= 0 && this.standT < 0.2;
     function walkingLikely(sp, sw) { return Math.abs(sp) > 0.06 || sw !== 0; }
     if (idle && this.groomT <= 0 && Math.random() < dt * 0.12) this.groomT = 2.6;
     if (!idle) this.groomT = 0;
@@ -533,7 +604,7 @@ export class Fly3D {
     // ── 이동 ─────────────────────────────────
     let vx = 0;
     if (this.jumpT < 0 && upright > 0.6 && !flying) {
-      vx = (sipWalk !== 0 ? sipWalk * 1.3 : speed * 2.3 * this.dir) * upright;
+      vx = ((sipWalk || standWalk) !== 0 ? (sipWalk || standWalk) * 1.3 : speed * 2.3 * this.dir) * upright * (1 - this.standT);
       if (eth > 0.1) {
         this._staggerVx += (Math.random() - 0.5) * eth * 6.5 * dt;
         this._staggerVx *= 1 - Math.min(1, dt * 2.5);
@@ -542,12 +613,14 @@ export class Fly3D {
     }
     if (flying) vx = (0 - this.x) * 0.35 + Math.sin(this.t * 2.3) * 0.7;
     this.x += vx * dt;
+    if (this.standT > 0.3) this.x += (STAND_X - this.x) * Math.min(1, dt * 4) * this.standT;
     if (this.passT > 0.05) this.x += (BED_POS - this.x) * Math.min(1, dt * 2.5) * this.passT;
     if (this.x < -BOUND) { this.x = -BOUND; this.dir = 1; }
     if (this.x > BOUND) { this.x = BOUND; this.dir = -1; }
 
     // ── 자세 ─────────────────────────────────
-    const walking = (Math.abs(speed) > 0.06 || sipWalk !== 0) && this.jumpT < 0 && upright > 0.6 && !flying;
+    const walking = (Math.abs(speed) > 0.06 || sipWalk !== 0 || standWalk !== 0) &&
+                    this.jumpT < 0 && upright > 0.6 && !flying && this.standT < 0.6;
     this.walkPhase += dt * (walking ? 10 + 14 * Math.max(Math.abs(speed), 0.5) : 1.2);
 
     let y = 1.18;
@@ -570,6 +643,8 @@ export class Fly3D {
     }
     if (grooming) rotZ += 0.1;                      // 그루밍: 앞으로 숙임
     if (this.sip > 0.05) rotZ += this.sip * 0.22;   // 홀짝: 웅덩이로 숙임
+    rotZ += this.standT * 0.88;                     // 난간: 두 발로 선다 (코 위로)
+    y += this.standT * 0.95;
     rotZ += this.passT * 0.35;
     y += this.passT * (MATTRESS_TOP + 0.62 - 1.18);
     if (this.passT > 0.3) y += Math.sin(this.t * 1.1) * 0.045;
@@ -584,6 +659,12 @@ export class Fly3D {
         swing = 0.5; femurDown = 1.9; knee = -0.35; splay = 0.85;
       } else if (this.jumpT >= 0 || flying) {       // 접기
         swing = -0.4; femurDown = 0.7; knee = -2.1; splay = 0.35;
+      } else if (this.standT > 0.5) {               // 난간에 기대 섬
+        // 몸이 0.88rad 젖혀지므로 다리 각도는 그만큼 되돌린다.
+        // 앞다리: 난간 위에 걸침 / 중간: 몸 옆에 늘어짐 / 뒷다리: 바닥 지탱
+        const st = [[0.85, 0.5, -0.7], [-0.1, 0.75, -0.55], [-1.5, 0.3, -0.3]][leg.idx];
+        swing = st[0] + Math.sin(this.t * 1.4 + leg.phase) * 0.03;
+        femurDown = st[1]; knee = st[2]; splay = 0.22;
       } else if (grooming && leg.front) {           // 앞다리 비비기
         const rub = Math.sin(this.t * 16 + (leg.side > 0 ? 0 : Math.PI)) * 0.35;
         swing = 1.15 + rub * 0.3; femurDown = 0.35; knee = -2.3 + rub; splay = 0.15;
@@ -622,6 +703,7 @@ export class Fly3D {
     this.cigG.visible = this.cigO > 0.05;
     if (this.cigG.visible) {
       this.ember.material.color.setHSL(0.05, 1, 0.45 + Math.max(0, Math.sin(this.t * 2.4)) * 0.2);
+      this.cigLight.intensity = this.cigO * (0.5 + Math.max(0, Math.sin(this.t * 2.4)) * 0.55);
       this.puffs.forEach((sp, i) => {
         const ph = (this.t * 0.35 + i / 3) % 1;
         sp.position.set(0.55 + Math.sin(this.t * 1.7 + i * 2) * 0.1, 0.15 + ph * 1.5, 0);
@@ -655,6 +737,7 @@ export class Fly3D {
       walking ? (eth > 0.25 ? '갈지자 걸음 🍺' : '걷는 중 🚶') :
       grooming ? '그루밍 🧼' :
       this.prob > 0.3 ? '냠냠 🍬' :
+      this.standT > 0.5 ? '난간에서 한 대 🚬' :
       this.nic > 0.25 ? '뻐끔뻐끔 🚬' :
       eth > 0.25 ? '알딸딸 🍺' : '대기 🪰';
     return this.behavior;
