@@ -222,3 +222,18 @@ body { background: var(--bg); color: var(--text); font-family: "Pretendard Varia
 @media print {
   .notice-toast { display: none !important; }
 }
+
+/* 데이터베이스가 없을 때(Vercel + DB 미연결) 화면 맨 위 안내 */
+.hana-nodb { position: relative; z-index: 60; display: flex; align-items: flex-start; gap: 10px; padding: 10px 44px 10px 16px; background: rgb(255, 244, 214); border-bottom: 1px solid rgb(232, 200, 120); color: rgb(110, 76, 8); font-size: 13px; line-height: 1.6; }
+
+.hana-nodb strong { flex: 0 0 auto; }
+
+.hana-nodb b { font-weight: 700; }
+
+.hana-nodb button { position: absolute; top: 6px; right: 10px; border: 0px; background: none; color: inherit; font-size: 20px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+
+.hana-nodb button:hover { background: rgba(0, 0, 0, 0.06); }
+
+@media (max-width: 720px) {
+  .hana-nodb { flex-direction: column; gap: 4px; }
+}

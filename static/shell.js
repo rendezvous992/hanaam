@@ -264,6 +264,28 @@
 
   window.hanaPasswordDialog = openPasswordDialog;
 
+  /* ---------- 데이터베이스가 없을 때: 무엇이 빠졌는지 화면 맨 위에 알린다 ---------- */
+  // Vercel 에 DATABASE_URL 이 없으면 서버가 <meta name="hana-mode" content="nodb"> 를 붙인다.
+  // 이때는 로그인·계정 관리·부서 공용 데이터가 모두 꺼지고, 각 브라우저에만 저장된다.
+  if (document.querySelector('meta[name="hana-mode"][content="nodb"]')) {
+    document.documentElement.setAttribute("data-hana-nodb", "1");
+    var hidden = store("hana.nodb.hide") === "1";
+    if (!hidden) {
+      var bar = document.createElement("div");
+      bar.className = "hana-nodb";
+      bar.innerHTML =
+        '<strong>데이터베이스가 연결되지 않았습니다.</strong>' +
+        '<span>로그인·계정 관리·IR/DART 불러오기·AI 요약·받아쓰기가 모두 꺼져 있고, 지금 보이는 내용은 <b>이 브라우저에만</b> 저장됩니다. ' +
+        'Vercel 프로젝트 → Storage → Neon(Postgres) 연결 → Settings → Environment Variables 에 키를 넣고 Redeploy 하면 켜집니다.</span>' +
+        '<button type="button" aria-label="닫기">×</button>';
+      bar.querySelector("button").addEventListener("click", function () {
+        store("hana.nodb.hide", "1");
+        bar.remove();
+      });
+      document.body.insertBefore(bar, document.body.firstChild);
+    }
+  }
+
   if (serverMode) {
     document.addEventListener("click", function (e) {
       if (e.target.closest("[data-hana-account]")) {
