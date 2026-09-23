@@ -1104,11 +1104,13 @@
         ? '<div class="detail-audio-wrap" data-audio><span class="detail-audio-label">🎙 녹음</span></div>' +
           '<p class="detail-audio-note">' +
           (store.server ? "녹음은 서버에 저장되어 있습니다." : "녹음 파일은 이 브라우저에만 저장되어 있습니다.") +
-          (store.server && sttReady
-            ? ' <button type="button" class="btn btn--ghost btn--sm" data-act="stt">🎧 받아쓰기' + (sumReady ? " + 요약" : "") + "</button>"
-            : store.server
+          (!store.server
+            ? " 자동 받아쓰기는 서버 모드에서만 됩니다."
+            : !sttReady
               ? " 자동 받아쓰기를 쓰려면 관리자가 OPENAI_API_KEY(또는 GROQ_API_KEY)를 넣어야 합니다."
-              : " 자동 받아쓰기는 서버 모드에서만 됩니다.") +
+              : (n.audio.size || 0) > sttMaxMb * 1024 * 1024
+                ? " 이 녹음은 " + sttMaxMb + "MB 가 넘어 자동 받아쓰기를 쓸 수 없습니다(녹음 화면의 실시간 받아쓰기를 이용하세요)."
+                : ' <button type="button" class="btn btn--ghost btn--sm" data-act="stt">🎧 받아쓰기' + (sumReady ? " + 요약" : "") + "</button>") +
           "</p>"
         : "") +
       (attach.length ? '<div class="detail-attach">' + attach.join("") + "</div>" : "") +
@@ -1804,6 +1806,22 @@
     }
   }
 
+  // 긴 미팅 중에 창이 닫히거나 브라우저가 죽어도 받아쓴 글을 잃지 않도록 임시 보관한다
+  const DRAFT_KEY = "hana.dict.draft";
+  function dictDraft(value) {
+    try {
+      if (value === undefined) {
+        const raw = window.localStorage.getItem(DRAFT_KEY);
+        return raw ? JSON.parse(raw) : null;
+      }
+      if (value === null) window.localStorage.removeItem(DRAFT_KEY);
+      else window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ text: value, at: Date.now() }));
+    } catch (e) {
+      /* 저장 공간이 없어도 받아쓰기는 계속한다 */
+    }
+    return null;
+  }
+
   function createDictation(onText) {
     if (!SpeechRec) return null;
     let rec = null;
@@ -1962,7 +1980,10 @@
         if (result) return window.confirm("저장하지 않은 녹음이 있습니다. 버리고 닫을까요?");
         // 녹음 없이 받아쓴 글만 있어도 잃지 않게 물어본다
         const script = $("[data-script]", ctx && ctx.modal ? ctx.modal : document);
-        if (script && script.value.trim()) return window.confirm("받아쓴 글이 저장되지 않았습니다. 버리고 닫을까요?");
+        if (script && script.value.trim()) {
+          if (!window.confirm("받아쓴 글이 저장되지 않았습니다. 버리고 닫을까요?")) return false;
+          dictDraft(null); // 버리기로 했으면 임시 보관본도 지운다
+        }
         return true;
       },
       onClose() {
@@ -2012,8 +2033,17 @@
       const len = scriptText().length;
       scriptClear.hidden = len === 0;
       scriptSum.hidden = len < 30;
+      dictDraft(len ? scriptBox.value : null);
     }
     scriptBox.addEventListener("input", showScriptButtons);
+
+    // 지난번에 저장하지 못한 받아쓰기가 남아 있으면 되살린다 (하루 안쪽 것만)
+    const draft = dictDraft();
+    if (draft && draft.text && Date.now() - draft.at < 86400000) {
+      scriptState.textContent = "저장하지 못한 받아쓰기를 되살렸습니다";
+      scriptBox.value = draft.text;
+      showScriptButtons();
+    }
     const scriptLang = $("[data-script-lang]", m);
     if (scriptLang) {
       scriptLang.addEventListener("change", () => {
@@ -2329,6 +2359,8 @@
             saveBtn.textContent = "노트로 저장";
           }
           result = null;
+          dictDraft(null); // 노트에 들어갔으니 임시 보관본은 지운다
+          scriptBox.value = "";
           ctx.close(true);
           render();
           toast("녹음을 노트로 저장했습니다.");
