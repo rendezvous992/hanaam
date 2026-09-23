@@ -40,15 +40,11 @@
     ["한화솔루션", "009830"], ["OCI홀딩스", "010060"], ["HD현대일렉트릭", "267260"],
   ];
 
-  const SEED_NOTES = [
-    { id: 4, company: "알지노믹스", ticker: "476830", title: "알지노믹스 콥데이" },
-    { id: 3, company: "올릭스", ticker: "226950", title: "올릭스 콥데이" },
-    { id: 1, company: "오스코텍", ticker: "039200", title: "오스코텍 콥데이" },
-  ].map((n) => Object.assign({
-    category: "group", type: "콥데이", author: "사용자", date: "2026-09-18",
-    body: "", link: "", files: [], audio: null, review: null,
-    createdAt: "2026-09-18T09:00:00+09:00",
-  }, n));
+  // 예전 버전이 처음 방문 때 넣던 예시 노트(제목만 있고 본문 없음). 손대지 않은 채 남아 있으면 지운다.
+  const OLD_SEEDS = { 1: "오스코텍 콥데이", 3: "올릭스 콥데이", 4: "알지노믹스 콥데이" };
+  function isOldSeed(n) {
+    return OLD_SEEDS[n.id] === n.title && n.date === "2026-09-18" && !String(n.body || "").trim() && !(n.files || []).length && !n.audio && !n.link;
+  }
 
   /* ================================================================
    * 유틸
@@ -180,11 +176,10 @@
     server: false,
     async load() {
       let list = readJSON(NOTES_KEY, null);
-      if (!Array.isArray(list)) {
-        list = SEED_NOTES.map((n) => Object.assign({}, n));
-        writeJSON(NOTES_KEY, list);
-      }
-      return list;
+      if (!Array.isArray(list)) list = [];
+      const kept = list.filter((n) => !isOldSeed(n));
+      if (kept.length !== list.length || !readJSON(NOTES_KEY, null)) writeJSON(NOTES_KEY, kept);
+      return kept;
     },
     persist() {
       if (!writeJSON(NOTES_KEY, notes)) throw new Error("브라우저 저장 공간에 저장하지 못했습니다.");
