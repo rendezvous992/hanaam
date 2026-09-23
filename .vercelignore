@@ -1,6 +1,6 @@
-# Vercel 에는 화면(정적 파일)만 올린다. 서버·설치 스크립트는 AWS 등 서버용이다.
-server/
+# Vercel 에 올리지 않을 것 (설치형 서버 스크립트, 로컬 데이터)
 deploy/
 data/
 venv/
 .venv/
+public/

@@ -85,3 +85,14 @@
 .admin__section:has(> .fold) { margin-bottom: 0px; }
 
 .admin__section:has(> .fold) + .admin__section:not(:has(> .fold)) { margin-top: 36px; }
+.dept-editor { display: flex; flex-direction: column; gap: 10px; max-width: 420px; }
+.dept-editor textarea { min-height: 160px; font-size: 13px; line-height: 1.7; }
+.dept-editor .btn { align-self: flex-start; }
+.admin-table .row-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.admin-table select.input { appearance: auto; }
+.pending-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); margin-top: 10px; background: var(--surface); }
+.pending-card__who { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.pending-card__who small { color: var(--text-muted); font-size: 11.5px; }
+.pending-card__actions { display: flex; gap: 6px; }
+.credential { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 13px; }
+.credential .btn { margin-left: auto; }

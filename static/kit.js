@@ -108,7 +108,7 @@
   }));
   function currentUser() {
     const el = $(".hana-account-copy strong");
-    return (el && el.textContent.trim()) || "donghwi.kim";
+    return (el && el.textContent.trim()) || "사용자";
   }
 
   /* ---------- 파일 (녹음·첨부·발표 자료) ---------- */
@@ -142,36 +142,87 @@
     };
   })();
 
+  const CHUNK = 3 * 1024 * 1024;
+  async function apiRaw(method, url, body, type) {
+    const headers = { "X-Hana": "1" };
+    if (type) headers["Content-Type"] = type;
+    const res = await fetch(url, { method, credentials: "same-origin", headers, body });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error((data && typeof data.detail === "string" && data.detail) || "파일을 올리지 못했습니다. (" + res.status + ")");
+    return data;
+  }
+  // 서버 파일을 조각(Range)으로 모두 받아 Blob 으로 만든다
+  async function fetchWhole(meta) {
+    const url = "/api/blobs/" + encodeURIComponent(meta.id);
+    const parts = [];
+    let start = 0;
+    let total = null;
+    let type = "";
+    for (let guard = 0; guard < 2000; guard++) {
+      const res = await fetch(url + "?download=1", { credentials: "same-origin", headers: { Range: "bytes=" + start + "-" } });
+      if (!res.ok) return null;
+      const buf = await res.arrayBuffer();
+      parts.push(buf);
+      const cr = res.headers.get("Content-Range");
+      if (res.status !== 206 || !cr) break;
+      const m = /\/(\d+)$/.exec(cr);
+      total = m ? Number(m[1]) : total;
+      start += buf.byteLength;
+      if (!buf.byteLength || total === null || start >= total) break;
+    }
+    type = meta.type || "";
+    return new Blob(parts, { type });
+  }
+  const STREAMABLE = /^(audio|video)\//;
+
   const files = {
-    // Blob → { id, name, size, type }
-    async put(blob, name) {
+    CHUNK,
+    // Blob → { id, name, size, type }. onProgress(0~1) 선택
+    async put(blob, name, onProgress) {
       const s = await sessionPromise;
       const fname = name || blob.name || "file";
       if (s.server) {
-        const form = new FormData();
-        form.append("file", blob, fname);
-        const res = await fetch("/api/blobs", { method: "POST", credentials: "same-origin", headers: { "X-Hana": "1" }, body: form });
-        const data = await res.json().catch(() => null);
-        if (!res.ok) throw new Error((data && typeof data.detail === "string" && data.detail) || "파일을 올리지 못했습니다.");
-        return data;
+        const start = await apiRaw("POST", "/api/blobs/start", JSON.stringify({ name: fname, size: blob.size, type: blob.type || "" }), "application/json");
+        const size = start.chunkSize || CHUNK;
+        const count = Math.max(1, Math.ceil(blob.size / size));
+        for (let i = 0; i < count && blob.size; i++) {
+          const part = blob.slice(i * size, Math.min(blob.size, (i + 1) * size));
+          let tries = 0;
+          for (;;) {
+            try {
+              await apiRaw("PUT", "/api/blobs/" + start.id + "/chunks/" + i, part, "application/octet-stream");
+              break;
+            } catch (e) {
+              if (++tries >= 3) throw e;
+              await new Promise((r) => setTimeout(r, 800 * tries));
+            }
+          }
+          if (onProgress) onProgress((i + 1) / count);
+        }
+        const done = await apiRaw("POST", "/api/blobs/" + start.id + "/finish");
+        return { id: done.id, name: done.name, size: done.size, type: done.type || blob.type || "" };
       }
       const meta = { id: uid("f"), name: fname, size: blob.size, type: blob.type || "" };
       await idb.put(meta.id, blob);
+      if (onProgress) onProgress(1);
       return meta;
     },
     // { url, revoke } 또는 null
     async url(meta, download) {
       const s = await sessionPromise;
-      if (s.server) return { url: "/api/blobs/" + encodeURIComponent(meta.id) + (download ? "?download=1" : ""), revoke: false };
+      if (s.server) {
+        const direct = "/api/blobs/" + encodeURIComponent(meta.id) + (download ? "?download=1" : "");
+        // 작은 파일, 소리·영상(브라우저가 알아서 나눠 받음)은 주소를 그대로 쓴다
+        if ((meta.size || 0) <= CHUNK || (!download && STREAMABLE.test(meta.type || ""))) return { url: direct, revoke: false };
+        const blob = await fetchWhole(meta);
+        return blob ? { url: URL.createObjectURL(blob), revoke: true } : null;
+      }
       const blob = await idb.get(meta.id).catch(() => null);
       return blob ? { url: URL.createObjectURL(blob), revoke: true } : null;
     },
     async blob(meta) {
       const s = await sessionPromise;
-      if (s.server) {
-        const res = await fetch("/api/blobs/" + encodeURIComponent(meta.id), { credentials: "same-origin" });
-        return res.ok ? res.blob() : null;
-      }
+      if (s.server) return fetchWhole(meta);
       return idb.get(meta.id).catch(() => null);
     },
     async remove(meta) {
@@ -326,7 +377,9 @@
       '<button type="button" class="modal__close" aria-label="닫기">×</button></div></div>';
     const box = overlay.firstElementChild;
     box.insertAdjacentHTML("beforeend", opts.html || "");
-    document.body.appendChild(overlay);
+    // 열린 <dialog> 가 있으면 그 안에 띄워야 위에 보이고 눌린다 (dialog 는 최상위 층)
+    const dialogs = $$("dialog[open]");
+    (dialogs.length ? dialogs[dialogs.length - 1] : document.body).appendChild(overlay);
     const ctx = {
       overlay,
       modal: box,

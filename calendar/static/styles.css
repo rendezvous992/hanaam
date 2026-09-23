@@ -412,3 +412,6 @@
 .cday-table__act .btn { padding: 3px 8px; font-size: 12px; }
 
 .cday-table__act .btn + .btn { margin-left: 4px; }
+.dart-ir-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; max-height: 60vh; overflow-y: auto; }
+.dart-ir-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; }
+.dart-ir-item__actions { display: flex; gap: 6px; flex: 0 0 auto; }

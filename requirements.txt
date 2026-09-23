@@ -1,0 +1,4 @@
+# Vercel(서버리스) 용. 내 PC·AWS 설치는 server/requirements.txt 를 쓴다.
+fastapi>=0.115,<1
+anthropic>=1.8,<2
+psycopg[binary]>=3.2,<4

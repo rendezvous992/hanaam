@@ -45,7 +45,7 @@
     { id: 3, company: "올릭스", ticker: "226950", title: "올릭스 콥데이" },
     { id: 1, company: "오스코텍", ticker: "039200", title: "오스코텍 콥데이" },
   ].map((n) => Object.assign({
-    category: "group", type: "콥데이", author: "donghwi.kim", date: "2026-09-18",
+    category: "group", type: "콥데이", author: "사용자", date: "2026-09-18",
     body: "", link: "", files: [], audio: null, review: null,
     createdAt: "2026-09-18T09:00:00+09:00",
   }, n));
@@ -122,7 +122,7 @@
     }
   }
 
-  let CURRENT_USER = ($(".hana-account-copy strong") || {}).textContent || "donghwi.kim";
+  let CURRENT_USER = ($(".hana-account-copy strong") || {}).textContent || "사용자";
 
   /* ================================================================
    * 저장소
@@ -275,18 +275,9 @@
         notes = notes.filter((o) => o.id !== note.id);
       },
       async addFile(note, blob, name, kind, duration) {
-        const form = new FormData();
-        form.append("file", blob, name || blob.name || "file");
-        form.append("kind", kind);
-        form.append("duration", String(Math.round(duration || 0)));
-        const res = await fetch("/api/notes/" + note.id + "/files", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "X-Hana": "1" },
-          body: form,
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok) throw new Error((data && typeof data.detail === "string" && data.detail) || "파일을 올리지 못했습니다 (" + res.status + ")");
+        // 파일은 조각으로 먼저 올리고(Kit.files) 노트에 붙인다
+        const up = await window.Kit.files.put(blob, name || blob.name || "file");
+        const data = await api("POST", "/api/notes/" + note.id + "/files", { blobId: up.id, kind, duration: Math.round(duration || 0) });
         if (kind === "audio") note.audio = data;
         else note.files = (note.files || []).concat(data);
         return data;
@@ -296,12 +287,8 @@
         note.files = (note.files || []).filter((f) => f.id !== fileId);
         if (note.audio && note.audio.id === fileId) note.audio = null;
       },
-      async fileUrl(meta) {
-        return { url: "/api/files/" + encodeURIComponent(meta.id), revoke: false };
-      },
-      async downloadUrl(meta) {
-        return { url: "/api/files/" + encodeURIComponent(meta.id) + "?download=1", revoke: false };
-      },
+      fileUrl: (meta) => window.Kit.files.url(meta, false),
+      downloadUrl: (meta) => window.Kit.files.url(meta, true),
       savedList: () => api("GET", "/api/saved"),
       savedAdd: (item) => api("POST", "/api/saved", item),
     };
@@ -2039,10 +2026,20 @@
         '<button type="button" class="ask__close" data-act="close" aria-label="닫기">×</button></div>' +
         '<div class="ask__answer">' + answer + "</div>" + cited +
         (top.length
-          ? '<div class="ask__save-row"><button type="button" class="ask__save" data-act="save">답변 저장</button><span class="ask__save-hint">저장한 답변은 🔖에서 다시 볼 수 있습니다.</span></div>'
-          : "");
+          ? '<div class="ask__save-row"><button type="button" class="ask__save" data-act="save">답변 저장</button>' +
+            (canResearch ? '<a class="ask__save" href="/research/?q=' + encodeURIComponent(question) + '">AI 리서치로 자세히 묻기</a>' : "") +
+            '<span class="ask__save-hint">저장한 답변은 🔖에서 다시 볼 수 있습니다.</span></div>'
+          : canResearch
+            ? '<div class="ask__save-row"><a class="ask__save" href="/research/?q=' + encodeURIComponent(question) + '">AI 리서치로 묻기</a></div>'
+            : "");
     }, 350);
   }
+
+  // 서버 모드에서 AI 리서치 권한이 있으면 답변 아래에 'AI 리서치로 묻기' 를 보여 준다
+  let canResearch = false;
+  (window.hanaSession || Promise.resolve({})).then((s) => {
+    canResearch = !!(s && s.server && s.me && (s.me.permissions || []).includes("ai_research"));
+  }).catch(() => {});
 
   ask.form.addEventListener("submit", (e) => {
     e.preventDefault();

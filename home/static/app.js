@@ -88,8 +88,9 @@
 
   function renderMe(session) {
     const name = session.me ? session.me.displayName || session.me.username : K.currentUser();
-    $(".signin__name").innerHTML = esc(name) + (session.me && session.me.role === "admin" ? ' <span class="signin__admin">관리자</span>' : "");
-    $(".signin__dept").textContent = session.server ? session.me.username : "이 브라우저에 저장하는 모드";
+    const role = session.me ? session.me.role : "";
+    $(".signin__name").innerHTML = esc(name) + (role === "super" || role === "admin" ? ' <span class="signin__admin">' + esc(session.me.roleLabel || "관리자") + "</span>" : "");
+    $(".signin__dept").textContent = session.server ? (session.me.department || "본부 미지정") + " · " + session.me.username : "이 브라우저에 저장하는 모드";
     const lastKey = "home.lastVisit";
     const last = K.prefs.get(lastKey, "");
     $(".signin__last").textContent = last ? "지난 방문 " + last.slice(5).replace("-", "/") : "첫 방문";
@@ -98,16 +99,14 @@
     $$(".signin__actions a").forEach((a) => {
       if (session.server) {
         a.removeAttribute("data-hana-stub");
-        a.setAttribute("href", "#account");
-        a.setAttribute("data-hana-account", "");
-        a.textContent = "비밀번호 변경";
+        a.setAttribute("href", "/account/");
+        a.textContent = "내 정보";
       }
     });
     const avatar = $(".signin__avatar");
     if (avatar) {
       avatar.removeAttribute("data-hana-stub");
-      avatar.setAttribute("href", session.server ? "#account" : "/settings/");
-      if (session.server) avatar.setAttribute("data-hana-account", "");
+      avatar.setAttribute("href", "/account/");
     }
   }
 
@@ -149,6 +148,7 @@
   function weekKey(ymd) {
     return K.startOfWeek(ymd, true);
   }
+  let canLog = true;
   function renderChangelog() {
     const weeks = Array.from(new Set(logs.map((x) => weekKey(x.date)))).sort().reverse().slice(0, 4);
     if (!wnWeek || !weeks.includes(wnWeek)) wnWeek = weeks[0] || weekKey(K.today());
@@ -158,10 +158,10 @@
       '<p class="whatsnew__range">' + K.md(wnWeek) + " ~ " + K.md(K.addDays(wnWeek, 6)) + "</p>" +
       (list.length
         ? '<ul class="whatsnew__list">' + list.map((x) => '<li class="whatsnew__item"><span class="whatsnew__text">[' + esc(x.kind || "개선") + "] " + esc(x.text) +
-          '</span><button type="button" class="whatsnew__del" data-del="' + esc(x.id) + '" aria-label="삭제">×</button></li>').join("") + "</ul>"
+          "</span>" + (canLog ? '<button type="button" class="whatsnew__del" data-del="' + esc(x.id) + '" aria-label="삭제">×</button>' : "") + "</li>").join("") + "</ul>"
         : '<p class="card__empty">이 주에는 변경사항이 없습니다.</p>') +
-      '<form class="whatsnew__form" id="wn-form"><div class="whatsnew__form-row"><select class="input input--compact" id="wn-kind"><option>추가</option><option>개선</option><option>수정</option></select>' +
-      '<input class="input input--compact" id="wn-text" maxlength="200" placeholder="변경사항 한 줄"></div><div class="whatsnew__form-row"><button type="submit" class="btn btn--ghost btn--sm">변경사항 남기기</button></div></form>';
+      (!canLog ? "" : '<form class="whatsnew__form" id="wn-form"><div class="whatsnew__form-row"><select class="input input--compact" id="wn-kind"><option>추가</option><option>개선</option><option>수정</option></select>' +
+      '<input class="input input--compact" id="wn-text" maxlength="200" placeholder="변경사항 한 줄"></div><div class="whatsnew__form-row"><button type="submit" class="btn btn--ghost btn--sm">변경사항 남기기</button></div></form>');
   }
   document.addEventListener("click", async (e) => {
     const tab = e.target.closest(".whatsnew__tab");
@@ -205,6 +205,8 @@
 
   (async function init() {
     const session = await K.session();
+    // 변경사항 추가·삭제는 '변경사항 추가' 권한이 있어야 한다 (브라우저 모드는 누구나)
+    canLog = !session.server || (session.me.permissions || []).includes("changelog");
     renderMe(session);
     const [events, ndr, notes] = await Promise.all([
       K.irEvents().list().catch(() => []),

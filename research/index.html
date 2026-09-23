@@ -106,9 +106,9 @@
 <button aria-controls="hana-navigation" aria-expanded="true" aria-label="메뉴 접기" class="hana-sidebar-fold" data-hana-toggle="" title="메뉴 접기 · Alt+S" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="m14 6-6 6 6 6m5-14v16"></path>
 </svg><span>메뉴 접기</span><kbd>Alt S</kbd></button>
-<a class="hana-account" data-hana-stub="" href="/account/">
-<span aria-hidden="true" class="hana-user-avatar">D</span>
-<span class="hana-account-copy"><strong>donghwi.kim</strong><small>계정 관리자 · 미지정</small></span>
+<a class="hana-account" href="/account/">
+<span aria-hidden="true" class="hana-user-avatar">사</span>
+<span class="hana-account-copy"><strong>사용자</strong><small>계정 관리자 · 미지정</small></span>
 <svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <circle cx="9" cy="8" r="3"></circle><path d="M3 20v-2a6 6 0 0 1 12 0v2m3-13v6m-3-3h6"></path>
 </svg>
@@ -126,7 +126,7 @@
 </svg></button>
 <span class="hana-breadcrumb"><strong>AI 리서치</strong></span>
 </div>
-<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:24:11.830Z">2026. 09. 23. (수) 15:24 KST</time><a data-hana-stub="" href="/account/">donghwi.kim</a></div>
+<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:24:11.830Z">2026. 09. 23. (수) 15:24 KST</time><a href="/account/">사용자</a></div>
 </header>
 <main class="site-main" id="hana-main" tabindex="-1">
 <div class="research" id="research-root" style="--side-width: 260px; --panel-width: 320px;">
@@ -179,20 +179,7 @@
 <h3>참고한 노트</h3>
 <button aria-expanded="true" class="artifact-toggle" id="reference-toggle" type="button">접기</button>
 </div>
-<div class="artifact-empty" id="reference-list"><div aria-label="참고 자료 형식" class="reference-filters" role="group">
-<button aria-pressed="true" class="reference-filter" data-reference-format="all" type="button">전체 3</button><button aria-pressed="false" class="reference-filter" data-reference-format="table" type="button">표 2</button><button aria-pressed="false" class="reference-filter" data-reference-format="json" type="button">JSON 1</button></div>
-<button class="reference-item" data-source-url="/research/data/file?dataset=universe&amp;key=universe.parquet" type="button">
-<span class="file-badge file-badge--table">PARQUET</span>
-<b>universe.parquet</b><span>universe · 조회한 자료</span>
-</button>
-<button class="reference-item" data-source-url="/research/data/file?dataset=daily-data&amp;key=daily.parquet" type="button">
-<span class="file-badge file-badge--table">PARQUET</span>
-<b>daily.parquet</b><span>daily-data · 조회한 자료</span>
-</button>
-<button class="reference-item" data-source-url="/research/data/file?dataset=korea-ir-guidance&amp;key=quantiwise_ir_guidance%2Fquantiwise_ir_guidance_latest.json" type="button">
-<span class="file-badge file-badge--json">JSON</span>
-<b>quantiwise_ir_guidance_latest.json</b><span>korea-ir-guidance · 조회한 자료</span>
-</button></div>
+<div class="artifact-empty" id="reference-list">아직 참고한 자료가 없습니다.</div>
 </section>
 <section class="artifact-box">
 <h3>참고 요청</h3>
@@ -223,6 +210,10 @@
 <div class="schedule-fields">
 <label>반복<select id="schedule-cadence"><option value="weekdays">평일 (월~금)</option><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option><option value="once">한 번</option><option value="cron">직접 cron 입력</option></select></label>
 <label id="schedule-time-wrap">실행 시간 (KST)<input id="schedule-time" type="time" value="08:00"/></label>
+<label id="schedule-weekday-wrap" hidden>요일<select id="schedule-weekday"><option value="0">월요일</option><option value="1">화요일</option><option value="2">수요일</option><option value="3">목요일</option><option value="4">금요일</option><option value="5">토요일</option><option value="6">일요일</option></select></label>
+<label id="schedule-monthday-wrap" hidden>날짜 (매월)<input id="schedule-monthday" type="number" min="1" max="31" value="1"/></label>
+<label id="schedule-date-wrap" hidden>실행 날짜<input id="schedule-date" type="date"/></label>
+<label id="schedule-cron-wrap" hidden>cron (분 시 일 월 요일, KST)<input id="schedule-cron" placeholder="30 8 * * 1-5" spellcheck="false"/></label>
 </div>
 <div aria-live="polite" class="schedule-preview" id="schedule-preview"></div>
 <div class="schedule-form-actions"><button class="btn btn--primary" id="schedule-save" type="submit">예약 저장</button><button class="btn btn--ghost" id="schedule-reset" type="button">새로 작성</button></div>
@@ -230,7 +221,7 @@
 </section>
 <section class="schedule-records"><h3>등록한 예약 <span id="schedule-count"></span></h3><div id="schedule-list">예약을 불러오고 있습니다.</div></section>
 </div>
-<footer class="schedule-foot">결과와 PNG는 내 리서치 대화에 저장됩니다. 같은 시각의 작업은 순서대로 처리하며, 서버 중단 등으로 밀린 반복 예약은 최근 회차 한 번만 실행합니다. 일시정지는 이후 실행과 대기 중인 실행에 적용됩니다.</footer>
+<footer class="schedule-foot">결과는 내 리서치 대화에 [예약] 제목으로 저장됩니다. 같은 시각의 작업은 순서대로 처리하며, 서버 중단 등으로 밀린 반복 예약은 최근 회차 한 번만 실행합니다. 일시정지는 이후 실행에 적용됩니다.</footer>
 </dialog>
 </main>
 </div>

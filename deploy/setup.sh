@@ -81,6 +81,8 @@ chown -R root:root "$APP_DIR"
 chown -R "$APP_USER:$APP_USER" "$DATA_DIR"
 chmod 750 "$DATA_DIR"
 
+[ -f /etc/hana-notes.env ] || { printf '# 키를 넣고 sudo systemctl restart hana-notes\n# ANTHROPIC_API_KEY=\n# DART_API_KEY=\n# EODHD_API_KEY=\n' > /etc/hana-notes.env; chmod 600 /etc/hana-notes.env; }
+
 cat > /etc/systemd/system/hana-notes.service <<EOF
 [Unit]
 Description=Note archive (uvicorn)
@@ -91,6 +93,8 @@ User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_DIR
 Environment=HANA_DATA_DIR=$DATA_DIR
+# 외부 연결 키(ANTHROPIC_API_KEY, DART_API_KEY, EODHD_API_KEY)를 넣는 파일 (없어도 됨)
+EnvironmentFile=-/etc/hana-notes.env
 ExecStart=$APP_DIR/venv/bin/uvicorn server.app:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
 Restart=always
 RestartSec=3
@@ -244,7 +248,7 @@ if manage users | grep -q "사용자가 없습니다"; then
   # 파이프로 실행돼도 키보드 입력을 받도록 /dev/tty 에서 읽는다
   read -r -p "관리자 아이디 (영문): " ADMIN_ID </dev/tty
   read -r -p "화면에 보일 이름: " ADMIN_NAME </dev/tty
-  manage adduser "$ADMIN_ID" --name "${ADMIN_NAME:-$ADMIN_ID}" --admin
+  manage adduser "$ADMIN_ID" --name "${ADMIN_NAME:-$ADMIN_ID}" --super
 else
   manage users
 fi
@@ -253,11 +257,13 @@ cat <<EOF
 
 ============================================================
  설치 완료
- 접속 주소:  $SITE_URL/notes/
+ 접속 주소:  $SITE_URL/
 $( [ -z "$DOMAIN" ] && echo " (자체 인증서라 첫 접속 때 '안전하지 않음' 경고가 뜹니다 → 고급 → 계속 진행)" )
 
- 부서원 추가:
-   cd $APP_DIR && sudo -u $APP_USER env HANA_DATA_DIR=$DATA_DIR venv/bin/python -m server.manage adduser <아이디> --name <이름>
+ 부서원 추가: 사이트의 '계정 관리' 화면에서 계정을 만들거나,
+   부서원이 로그인 화면의 '가입 신청' 을 하면 계정 관리에서 승인합니다.
+ AI 리서치를 켜려면 /etc/hana-notes.env 에 ANTHROPIC_API_KEY=... 를 넣고
+   sudo systemctl restart hana-notes
 
  AWS 보안 그룹에서 인바운드 $HTTPS_PORT(HTTPS)$( [ "$HTTPS_PORT" = 443 ] && echo "과 80(HTTP)" ) 포트를 열어야 접속됩니다.
 ============================================================

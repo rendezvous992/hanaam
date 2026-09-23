@@ -1,78 +1,80 @@
-# 기업 노트 아카이브
+# 업무공간
 
-`/notes/` 페이지(콥데이 · NDR · 탐방 노트 아카이브)를 브라우저에서 저장한 MHTML을 바탕으로 다시 만든 웹앱입니다.
-부서 공용 서버로 띄워 함께 쓸 수도 있고, 서버 없이 파일만으로 혼자 써 볼 수도 있습니다. 빌드 과정은 없습니다.
+부서용 업무 도구입니다. 홈, IR 캘린더, 미확정 일정(NDR), 경제·기업 이벤트 캘린더, 노트, AI 리서치, 아침회의,
+운용 현황, 개선요청, 시장, 포트폴리오 분석, 종목 분석·발굴, Setting, 계정 관리, 내 정보 화면이 있습니다.
 
-## 두 가지 실행 방법
+로그인·회원가입(관리자 승인)·등급·본부·탭 권한을 갖춘 **서버 모드**로 쓰는 것이 기본이고,
+서버 없이 파일만 열어도 각 브라우저에 저장하며 동작합니다(**브라우저 저장 모드**).
 
-### 1) 부서 공용 서버 (AWS 등) — 권장
+## 1) Vercel 에 올리기 (권장)
 
-로그인한 부서원들이 **같은 노트를 함께** 보고 씁니다. 노트·녹음·첨부는 서버(SQLite + 파일)에 저장됩니다.
-설치 방법은 **[deploy/README.md](deploy/README.md)** 에 단계별로 정리돼 있습니다 (`sudo bash deploy/setup.sh` 한 번).
+GitHub 에 푸시하면 Vercel 이 자동으로 배포합니다. 데이터베이스(Neon Postgres)를 붙이면 부서원이 같은 데이터를 함께 씁니다.
 
-내 PC에서 서버 모드로 먼저 써 보려면:
+1. Vercel → **Add New… → Project** → `hanaam` 레포 **Import** → Framework Preset **Other** → **Deploy**
+   (`vercel.json` 에 빌드·함수·주기 실행 설정이 들어 있어 따로 바꿀 것이 없습니다.)
+2. 프로젝트 → **Storage** 탭 → **Create Database → Neon (Postgres)** → 만들고 이 프로젝트에 **Connect**
+   → `DATABASE_URL` 등이 환경변수로 자동 추가됩니다.
+3. 프로젝트 → **Settings → Environment Variables** 에 추가 (Production·Preview 모두)
+
+   | 이름 | 필수 | 내용 |
+   | --- | --- | --- |
+   | `HANA_SETUP_CODE` | 권장 | 첫 가입자(=최고 관리자)만 아는 코드. 아무나 먼저 가입해 관리자가 되는 것을 막습니다 |
+   | `ANTHROPIC_API_KEY` | AI 리서치 | https://console.anthropic.com 에서 발급. 없으면 AI 리서치가 노트 검색 결과만 보여 줍니다 |
+   | `CRON_SECRET` | 예약 리서치 | 아무 긴 문자열. Vercel 이 10분마다 예약 작업을 깨울 때 확인용 |
+   | `DART_API_KEY` | 선택 | https://opendart.fss.or.kr 무료 발급 — 종목 분석의 공시, IR 공시 목록 |
+   | `EODHD_API_KEY` | 선택 | https://eodhd.com — 경제 캘린더 자동 일정 |
+   | `HANA_AI_MODEL` | 선택 | AI 모델 (기본 `claude-opus-5`) |
+
+4. **Deployments → 최근 배포 → Redeploy** (환경변수는 다시 배포해야 반영)
+5. 사이트 주소 → `/signup` 에서 첫 계정을 만들면 **최고 관리자**가 됩니다. 이후 가입 신청은 **계정 관리**에서 승인합니다.
+
+> DB 를 연결하지 않으면 로그인 없이 브라우저 저장 모드로 뜹니다(테스트용).
+> 파일(녹음·발표 자료)은 3MB 조각으로 DB 에 저장합니다. Neon 무료 용량(0.5GB)을 넘으면 요금제를 올려 주세요.
+
+## 2) 설치형 서버 (AWS EC2 등)
+
+[deploy/README.md](deploy/README.md) — `sudo bash deploy/setup.sh` 한 번으로 HTTPS·자동 시작·매일 백업까지 설치합니다.
+데이터는 SQLite(`data/notes.db`) 에 저장하며, `DATABASE_URL` 을 주면 Postgres 를 씁니다. 키는 `/etc/hana-notes.env` 에 넣습니다.
+
+내 PC 에서 서버 모드로 써 보기:
 
 ```bash
 python3 -m venv venv && venv/bin/pip install -r server/requirements.txt
-venv/bin/python -m server.manage adduser 내아이디 --name 내이름 --admin
 venv/bin/uvicorn server.app:app --port 8000
-# http://localhost:8000/notes/ 접속 → 로그인
+# http://localhost:8000/signup 에서 첫 계정(최고 관리자) 만들기
 ```
 
-### 2) Vercel 에 테스트 사이트로 올리기 (서버 없음)
-
-`https://<프로젝트명>.vercel.app` 주소로 바로 띄워 볼 수 있습니다. `vercel.json`·`.vercelignore`가 준비돼 있어 따로 설정할 것이 없습니다.
-
-1. https://vercel.com 에 GitHub 계정으로 가입/로그인
-2. **Add New… → Project → Import Git Repository** 에서 `hanaam` 선택 (안 보이면 *Adjust GitHub App Permissions*로 이 레포 접근 허용)
-3. Framework Preset은 **Other** 그대로 두고 **Deploy**
-4. 1분 뒤 나오는 주소로 접속 (`/`로 들어가면 `/notes/`로 이동). 주소 이름은 Project → Settings → Domains 에서 바꿀 수 있습니다.
-
-이 방식은 아래 3)과 같이 **노트가 각 브라우저에만 저장**됩니다. 부서원끼리 공유하려면 1)처럼 서버가 필요합니다.
-GitHub에 푸시할 때마다 Vercel이 자동으로 다시 배포합니다.
-
-### 3) 서버 없이 내 PC에서 (혼자 써 보기)
+## 3) 서버 없이 (혼자 써 보기)
 
 ```bash
-python3 -m http.server 8000
-# http://localhost:8000/notes/
+python3 -m http.server 8000     # http://localhost:8000/
 ```
 
-노트가 **지금 쓰는 브라우저에만** 저장됩니다(`localStorage`·`IndexedDB`). 다른 사람과 공유되지 않습니다.
-녹음은 브라우저 보안 정책 때문에 `https://` 주소나 `localhost`에서만 됩니다.
+데이터가 **지금 브라우저에만** 저장됩니다. 내 정보 화면에서 백업(.json)을 내려받아 다른 PC 로 옮길 수 있습니다.
+
+## 회원·권한
+
+| 등급 | 할 수 있는 일 |
+| --- | --- |
+| 최고 관리자 | 모든 기능, 계정 관리자 지정, 본부 목록 편집 (첫 가입자) |
+| 계정 관리자 | 일반 사용자 가입 승인·계정 만들기(임시 비밀번호)·본부·탭 권한·비밀번호 초기화·사용 중지·삭제, 세션 종료 |
+| 일반 | 기본 화면 + 받은 탭 권한 |
+
+탭·기능 권한: 포트폴리오 분석, AI 리서치, 워크로드, 개발자 탭, 변경사항 추가, 개선요청 처리, 노트 통계.
+권한이 없으면 메뉴가 숨겨지고, 주소를 직접 쳐도 서버가 막습니다. 임시 비밀번호로 처음 로그인하면 비밀번호를 바꿔야 다른 화면을 쓸 수 있습니다.
+
+명령으로 관리하기: `python -m server.manage adduser <아이디> --super|--admin`, `passwd`, `deluser`, `users`, `backup`
 
 ## 구성
 
 | 경로 | 내용 |
 | --- | --- |
-| `notes/index.html` | 노트 페이지 (원본 마크업 그대로, 서버 주소만 상대 경로로 바꿈) |
-| `notes/saved.html` | 저장한 답변 모아보기 |
-| `notes/static/styles.css` | 노트 화면 스타일 (원본) |
-| `notes/static/app.js` | 노트 화면 동작 (새로 작성) |
-| `notes/static/saved.js` | 저장한 답변 화면 동작 (새로 작성) |
-| `static/shell.css`, `static/tenant.css` | 공통 셸·테마 스타일 (원본) |
-| `static/shell.js` | 사이드바 접기(Alt+S), 모바일 메뉴, 한국 시간 시계, 토스트, 로그인 사용자 표시·비밀번호 변경 (새로 작성) |
-| `company/static/company.css` | 종목 분석 스타일 (원본, 노트 페이지가 함께 불러옴) |
-| `server/app.py` | 서버: 로그인, 노트·파일·저장한 답변 API, 화면 전달 (FastAPI + SQLite) |
-| `server/manage.py` | 사용자 추가·비밀번호 초기화·삭제·백업 명령 |
-| `server/login.html` | 로그인 화면 |
-| `deploy/setup.sh` | EC2 설치 스크립트 (HTTPS·자동 시작·매일 백업까지) |
-
-CSS는 원본에서 받은 그대로입니다. 단, 저장 과정에서 깨진 `.ask__spinner` 테두리 규칙 한 줄만 바로잡았습니다.
-원본 JS는 MHTML에 들어 있지 않아서, 화면 동작은 CSS에 정의된 클래스에 맞춰 새로 구현했습니다.
-
-## 기능
-
-- 종목 목록 · 분류 탭 · 검색(종목명/코드/제목/본문) · 상세 조건(기간, 유형, 작성자) · 페이지 나누기. 조건은 주소(`?company=…&q=…`)에 남습니다.
-- **+ 노트 등록**: 링크를 붙여넣으면 종목·분류·날짜를 찾아 채웁니다. 첨부 파일도 넣을 수 있습니다. **여러 건 한번에** 탭에서는 텍스트 파일 여러 개를 한꺼번에 노트로 만듭니다(종목을 못 찾으면 ‘확인 필요’로 표시).
-- **녹음**: 마이크로 녹음하거나 녹음 파일을 올려 노트에 붙입니다. 입력 레벨 표시와 무음 경고, 마이크 선택을 지원합니다.
-- 노트 상세: 본문 서식(`#`, `##`, `-`, `Q.`/`A.`, `항목: 값`), 같은 종목 노트 목록, 인쇄, 수정, 삭제. `notes/#note-3`처럼 주소로 바로 열 수 있습니다.
-- **노트에게 물어보기**: 질문 속 단어로 관련 노트를 모아 근거와 함께 보여줍니다. 답변은 저장해 두고 🔖에서 다시 볼 수 있습니다.
-- 사용법 안내창, 사이드바 접기/펼치기, 모바일 레이아웃.
-
-## 원본과 다른 점
-
-- **AI 기능**: 원본의 “노트에게 물어보기”는 AI가 답하지만, 여기서는 키워드 검색으로 관련 노트를 모아 줍니다. 녹음의 자동 받아쓰기·요약도 없습니다.
-- **다른 메뉴**: 사이드바의 다른 메뉴(IR 캘린더, 시장 등)는 복제하지 않았습니다. 누르면 안내 메시지만 뜹니다.
-- **계정**: 서버 모드에서는 관리자가 명령어로 계정을 만들어 줍니다(회원가입 화면 없음). 서버 없이 열면 로그인 없이 원본 화면의 사용자 이름을 씁니다.
-- **초기 노트**: 서버 없이 열 때만 원본 목록의 노트 3건(제목·분류만)을 예시로 보여줍니다. 서버 모드는 빈 상태에서 시작합니다.
+| `index.html`, `<화면>/index.html` | 화면 (원본 마크업) |
+| `<화면>/static/*.js` | 화면 동작 |
+| `static/shell.js` | 사이드바·시계·토스트·로그인 사용자·권한별 메뉴 |
+| `static/kit.js` | 공용: 저장소(서버/브라우저), 파일 조각 업로드, 모달, 날짜(KST), CSV |
+| `server/app.py` | 로그인·가입·계정 관리·노트·데이터 모음·파일·캘린더 구독(ICS) API |
+| `server/integrations.py` | AI 리서치(Claude), 예약 리서치, 시세, DART, 경제지표 |
+| `server/db.py` | SQLite / Postgres 연결과 테이블 |
+| `api/index.py`, `vercel.json`, `scripts/build-public.mjs` | Vercel 배포 |
+| `deploy/` | 설치형 서버 스크립트 |

@@ -153,6 +153,10 @@
     });
   }
 
+  var ROLE_LABEL = { super: "최고 관리자", admin: "계정 관리자", member: "일반" };
+  // 권한이 있어야 보이는 메뉴
+  var NAV_FEATURE = { "/research/": "ai_research", "/portfolio/": "portfolio", "/workload/": "workload", "/stats/": "note_stats" };
+
   function applyUser(me) {
     var name = me.displayName || me.username;
     var strong = document.querySelector(".hana-account-copy strong");
@@ -160,15 +164,27 @@
     var avatar = document.querySelector(".hana-user-avatar");
     var metaLink = document.querySelector(".hana-topbar-meta > a");
     if (strong) strong.textContent = name;
-    if (small) small.textContent = (me.role === "admin" ? "관리자" : "부서원") + " · " + me.username;
+    if (small) small.textContent = (ROLE_LABEL[me.role] || "일반") + " · " + (me.department || "미지정");
     if (avatar) avatar.textContent = name.charAt(0).toUpperCase();
     if (metaLink) metaLink.textContent = name;
     document.querySelectorAll(".hana-account, .hana-topbar-meta > a").forEach(function (a) {
       a.removeAttribute("data-hana-stub");
-      a.setAttribute("href", "#account");
-      a.setAttribute("data-hana-account", "");
-      a.title = "비밀번호 변경";
+      a.setAttribute("href", "/account/");
+      a.title = "내 정보";
     });
+    var perms = me.permissions || [];
+    document.querySelectorAll("#hana-navigation a[href]").forEach(function (a) {
+      var href = a.getAttribute("href");
+      var need = NAV_FEATURE[href];
+      var hide = (need && perms.indexOf(need) < 0) || (href === "/admin/users/" && me.role !== "admin" && me.role !== "super");
+      if (hide) a.hidden = true;
+    });
+    // 안쪽 메뉴가 모두 숨겨진 묶음은 묶음째 숨긴다
+    document.querySelectorAll("#hana-navigation .hana-nav-group").forEach(function (g) {
+      var kids = g.querySelectorAll("a.hana-nav-child");
+      if (kids.length && Array.prototype.every.call(kids, function (k) { return k.hidden; })) g.hidden = true;
+    });
+    document.documentElement.setAttribute("data-hana-role", me.role);
   }
 
   function openPasswordDialog() {
@@ -231,6 +247,22 @@
         return { server: true, me: me, api: apiFetch };
       })
     : Promise.resolve({ server: false, me: null, api: null });
+
+  if (!serverMode) {
+    var localName = store("hana.profile.name");
+    if (localName) {
+      var st = document.querySelector(".hana-account-copy strong");
+      var av = document.querySelector(".hana-user-avatar");
+      var ml = document.querySelector(".hana-topbar-meta > a");
+      if (st) st.textContent = localName;
+      if (av) av.textContent = localName.charAt(0).toUpperCase();
+      if (ml) ml.textContent = localName;
+    }
+    var sm = document.querySelector(".hana-account-copy small");
+    if (sm) sm.textContent = "이 브라우저에 저장";
+  }
+
+  window.hanaPasswordDialog = openPasswordDialog;
 
   if (serverMode) {
     document.addEventListener("click", function (e) {

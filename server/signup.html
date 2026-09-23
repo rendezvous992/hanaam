@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#00857b">
+  <title>가입 신청 · 업무공간</title>
+  <link rel="icon" type="image/svg+xml" href="/static/app-icon.svg">
+  <link rel="stylesheet" href="/static/shell.css">
+  <link rel="stylesheet" href="/static/tenant.css">
+  <style>
+    .auth-page { display: flex; align-items: center; justify-content: center; }
+    .auth-form { display: flex; flex-direction: column; }
+    .auth-card__mark { display: grid; place-items: center; width: 52px; height: 52px; }
+    .auth-card__mark img { width: 52px; height: 52px; }
+    .auth-form select.input { appearance: auto; }
+    .field__hint { color: rgb(138, 158, 145); font-size: 11px; }
+    .auth-done { text-align: center; line-height: 1.8; font-size: 13px; color: rgb(37, 78, 60); }
+    .auth-done .btn { margin-top: 18px; }
+  </style>
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <div class="auth-card__brand"><span class="auth-card__mark"><img src="/static/app-icon.svg" alt=""></span></div>
+    <h1 class="auth-card__title" id="signup-title">가입 신청</h1>
+    <p class="auth-card__lead" id="signup-lead">신청하면 계정 관리자가 확인한 뒤 승인합니다.<br>승인되면 같은 아이디로 로그인할 수 있습니다.</p>
+
+    <div class="banner banner--error" id="signup-error" role="alert" hidden></div>
+
+    <form class="auth-form" id="signup-form" novalidate>
+      <label class="field" id="code-field" hidden>
+        <span class="field__label">처음 설정 코드</span>
+        <input class="input" name="setupCode" autocomplete="off" spellcheck="false">
+        <span class="field__hint">서버를 설치할 때 정한 HANA_SETUP_CODE 값입니다.</span>
+      </label>
+      <label class="field">
+        <span class="field__label">아이디</span>
+        <input class="input" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required autofocus placeholder="영문 소문자·숫자 (예: hong.gildong)">
+      </label>
+      <label class="field">
+        <span class="field__label">이름</span>
+        <input class="input" name="displayName" autocomplete="name" required placeholder="노트 작성자로 보일 이름">
+      </label>
+      <label class="field">
+        <span class="field__label">본부</span>
+        <select class="input" name="department"></select>
+      </label>
+      <label class="field">
+        <span class="field__label">이메일 (선택)</span>
+        <input class="input" name="email" type="email" autocomplete="email" spellcheck="false">
+      </label>
+      <label class="field">
+        <span class="field__label">비밀번호</span>
+        <input class="input" name="password" type="password" autocomplete="new-password" required minlength="8" placeholder="8자 이상">
+      </label>
+      <label class="field">
+        <span class="field__label">비밀번호 확인</span>
+        <input class="input" name="password2" type="password" autocomplete="new-password" required>
+      </label>
+      <button class="btn btn--primary" type="submit" id="signup-submit">가입 신청</button>
+    </form>
+    <div class="auth-done" id="signup-done" hidden></div>
+    <p class="auth-foot">이미 계정이 있으면 <a href="/login">로그인</a></p>
+  </main>
+
+  <script>
+    (function () {
+      var form = document.getElementById("signup-form");
+      var error = document.getElementById("signup-error");
+      var done = document.getElementById("signup-done");
+      var first = false;
+
+      function showError(msg) {
+        error.textContent = msg;
+        error.hidden = false;
+      }
+
+      fetch("/api/signup-info", { credentials: "same-origin" })
+        .then(function (res) { return res.json(); })
+        .then(function (info) {
+          var sel = form.elements.department;
+          (info.departments || []).forEach(function (d) {
+            var o = document.createElement("option");
+            o.value = d === "미지정" ? "" : d;
+            o.textContent = d;
+            sel.appendChild(o);
+          });
+          first = !!info.firstUser;
+          if (first) {
+            document.getElementById("signup-title").textContent = "처음 설정 — 최고 관리자 만들기";
+            document.getElementById("signup-lead").innerHTML = "아직 계정이 없습니다. 지금 만드는 계정이 <b>최고 관리자</b>가 되며<br>승인 없이 바로 로그인할 수 있습니다.";
+            document.getElementById("signup-submit").textContent = "최고 관리자 계정 만들기";
+          }
+          document.getElementById("code-field").hidden = !info.needsCode;
+        })
+        .catch(function () { showError("서버에 연결하지 못했습니다."); });
+
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        error.hidden = true;
+        var f = form.elements;
+        var username = f.username.value.trim().toLowerCase();
+        if (!/^[a-z0-9._@-]{2,60}$/.test(username)) return showError("아이디는 영문 소문자·숫자·점(.)·밑줄(_)·하이픈(-) 2자 이상으로 정해 주세요.");
+        if (!f.displayName.value.trim()) return showError("이름을 입력해 주세요.");
+        if (f.password.value.length < 8) return showError("비밀번호는 8자 이상이어야 합니다.");
+        if (f.password.value !== f.password2.value) return showError("두 번 입력한 비밀번호가 다릅니다.");
+        var btn = document.getElementById("signup-submit");
+        btn.disabled = true;
+        fetch("/api/signup", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "X-Hana": "1" },
+          body: JSON.stringify({
+            username: username,
+            displayName: f.displayName.value.trim(),
+            department: f.department.value,
+            email: f.email.value.trim(),
+            password: f.password.value,
+            setupCode: f.setupCode.value
+          })
+        })
+          .then(function (res) {
+            return res.json().catch(function () { return {}; }).then(function (data) {
+              if (!res.ok) throw new Error(data.detail || "가입 신청을 하지 못했습니다.");
+              form.hidden = true;
+              done.hidden = false;
+              if (data.status === "active") {
+                done.innerHTML = "최고 관리자 계정을 만들었습니다.<br>이제 로그인해서 팀원 계정을 만들거나 가입 신청을 승인하세요.<br><a class=\"btn btn--primary\" href=\"/login\">로그인</a>";
+              } else {
+                done.innerHTML = "가입 신청을 보냈습니다.<br>계정 관리자가 승인하면 로그인할 수 있습니다.<br><a class=\"btn btn--primary\" href=\"/login\">로그인 화면으로</a>";
+              }
+            });
+          })
+          .catch(function (err) {
+            showError(err.message || "서버에 연결하지 못했습니다.");
+            btn.disabled = false;
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

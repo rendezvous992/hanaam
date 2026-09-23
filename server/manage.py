@@ -1,10 +1,12 @@
 """사용자 관리 명령.
 
-    python -m server.manage adduser <아이디> [--name 표시이름] [--admin]
+    python -m server.manage adduser <아이디> [--name 표시이름] [--admin | --super]
     python -m server.manage passwd <아이디>
     python -m server.manage deluser <아이디>
     python -m server.manage users
-    python -m server.manage backup [저장할 폴더]
+    python -m server.manage backup [저장할 폴더]      (SQLite 일 때만)
+
+DATABASE_URL 이 있으면 그 DB(Postgres)에, 없으면 data/notes.db 에 적용한다.
 """
 
 from __future__ import annotations
@@ -13,13 +15,13 @@ import argparse
 import getpass
 import os
 import re
-import shutil
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 
-from .app import DATA_DIR, DB_PATH, FILES_DIR, connect, hash_password, init_db, now_iso
+from .app import hash_password, now_iso
+from .db import DATA_DIR, IS_PG, IntegrityError, connect, init_db
 
 
 def ask_password() -> str:
@@ -38,30 +40,34 @@ def ask_password() -> str:
 
 
 def cmd_adduser(args: argparse.Namespace) -> int:
-    if not re.fullmatch(r"[A-Za-z0-9._-]{2,40}", args.username):
-        print("아이디는 영문·숫자·점(.)·밑줄(_)·하이픈(-) 2~40자로 정해 주세요.")
+    args.username = args.username.strip().lower()
+    if not re.fullmatch(r"[a-z0-9._@-]{2,60}", args.username):
+        print("아이디는 영문 소문자·숫자·점(.)·밑줄(_)·하이픈(-)·@ 2~60자로 정해 주세요.")
         return 1
     password = ask_password()
     if len(password) < 8:
         print("비밀번호는 8자 이상이어야 합니다.")
         return 1
+    role = "super" if args.super else ("admin" if args.admin else "member")
     with connect() as conn:
         try:
             conn.execute(
-                "INSERT INTO users(username, display_name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
-                (args.username, args.name or args.username, "admin" if args.admin else "member", hash_password(password), now_iso()),
+                "INSERT INTO users(username, display_name, role, password_hash, created_at, status) VALUES (?, ?, ?, ?, ?, 'active')",
+                (args.username, args.name or args.username, role, hash_password(password), now_iso()),
             )
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             print(f"'{args.username}' 아이디가 이미 있습니다.")
             return 1
-    print(f"'{args.username}' 사용자를 만들었습니다.{' (관리자)' if args.admin else ''}")
+    label = {"super": " (최고 관리자)", "admin": " (계정 관리자)"}.get(role, "")
+    print(f"'{args.username}' 사용자를 만들었습니다.{label}")
     return 0
 
 
 def cmd_passwd(args: argparse.Namespace) -> int:
+    args.username = args.username.strip().lower()
     password = ask_password()
     with connect() as conn:
-        cur = conn.execute("UPDATE users SET password_hash = ? WHERE username = ?", (hash_password(password), args.username))
+        cur = conn.execute("UPDATE users SET password_hash = ?, must_change = 0, status = 'active' WHERE username = ?", (hash_password(password), args.username))
         if not cur.rowcount:
             print(f"'{args.username}' 사용자가 없습니다.")
             return 1
@@ -71,6 +77,7 @@ def cmd_passwd(args: argparse.Namespace) -> int:
 
 
 def cmd_deluser(args: argparse.Namespace) -> int:
+    args.username = args.username.strip().lower()
     with connect() as conn:
         cur = conn.execute("DELETE FROM users WHERE username = ?", (args.username,))
     if not cur.rowcount:
@@ -82,23 +89,29 @@ def cmd_deluser(args: argparse.Namespace) -> int:
 
 def cmd_users(_: argparse.Namespace) -> int:
     with connect() as conn:
-        rows = conn.execute("SELECT username, display_name, role, created_at FROM users ORDER BY username").fetchall()
+        rows = conn.all("SELECT username, display_name, role, status, created_at FROM users ORDER BY username")
     if not rows:
         print("사용자가 없습니다. 'adduser' 로 만들어 주세요.")
         return 0
     for r in rows:
-        print(f"{r['username']:<20} {r['display_name']:<16} {r['role']:<7} {r['created_at']}")
+        print(f"{r['username']:<20} {r['display_name']:<16} {r['role']:<7} {r['status']:<9} {r['created_at']}")
     return 0
 
 
 def cmd_backup(args: argparse.Namespace) -> int:
+    if IS_PG:
+        print("Postgres 는 호스팅 업체(Neon 등)의 백업 기능을 써 주세요.")
+        return 1
     target_root = Path(args.dest or (DATA_DIR / "backups")).resolve()
     target = target_root / datetime.now().strftime("%Y%m%d-%H%M%S")
     target.mkdir(parents=True, exist_ok=True)
-    # 서버가 돌고 있어도 안전하게 DB 를 복사한다
-    with connect() as src, sqlite3.connect(target / "notes.db") as dst:
-        src.backup(dst)
-    shutil.copytree(FILES_DIR, target / "files", dirs_exist_ok=True)
+    # 서버가 돌고 있어도 안전하게 DB 를 복사한다 (첨부 파일도 DB 안에 있다)
+    src = connect()
+    try:
+        with sqlite3.connect(target / "notes.db") as dst:
+            src.raw.backup(dst)
+    finally:
+        src.raw.close()
     print(f"백업했습니다: {target}")
     return 0
 
@@ -111,7 +124,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("adduser", help="사용자 추가")
     p.add_argument("username")
     p.add_argument("--name", help="화면에 보일 이름 (작성자로도 쓰임)")
-    p.add_argument("--admin", action="store_true", help="관리자 권한 (모든 노트 삭제 가능)")
+    p.add_argument("--admin", action="store_true", help="계정 관리자 (일반 사용자 관리)")
+    p.add_argument("--super", action="store_true", help="최고 관리자 (모든 권한)")
     p.set_defaults(func=cmd_adduser)
 
     p = sub.add_parser("passwd", help="비밀번호 변경")

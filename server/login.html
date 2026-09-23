@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#00857b">
-  <title>로그인 · 노트</title>
+  <title>로그인 · 업무공간</title>
   <link rel="icon" type="image/svg+xml" href="/static/app-icon.svg">
   <link rel="stylesheet" href="/static/shell.css">
   <link rel="stylesheet" href="/static/tenant.css">
@@ -19,8 +19,8 @@
 <body class="auth-page">
   <main class="auth-card">
     <div class="auth-card__brand"><span class="auth-card__mark"><img src="/static/app-icon.svg" alt=""></span></div>
-    <h1 class="auth-card__title">기업 노트 아카이브</h1>
-    <p class="auth-card__lead">부서 계정으로 로그인해 주세요.<br>계정이 없으면 관리자에게 요청하세요.</p>
+    <h1 class="auth-card__title">업무공간</h1>
+    <p class="auth-card__lead">부서 계정으로 로그인해 주세요.<br>계정이 없으면 가입 신청 후 관리자 승인을 받으세요.</p>
 
     <div class="banner banner--error" id="login-error" role="alert" hidden></div>
 
@@ -41,7 +41,7 @@
       </label>
       <button class="btn btn--primary" type="submit">로그인</button>
     </form>
-    <p class="auth-foot">비밀번호를 잊었다면 관리자에게 재설정을 요청하세요.</p>
+    <p class="auth-foot"><a href="/signup">가입 신청</a> · 비밀번호를 잊었다면 계정 관리자에게 임시 비밀번호를 요청하세요.</p>
   </main>
 
   <script>
@@ -77,13 +77,13 @@
           body: JSON.stringify({
             username: username,
             password: pw.value,
-            next: new URLSearchParams(location.search).get("next") || "/notes/"
+            next: new URLSearchParams(location.search).get("next") || "/"
           })
         })
           .then(function (res) {
             return res.json().catch(function () { return {}; }).then(function (data) {
               if (!res.ok) throw new Error(data.detail || "로그인하지 못했습니다.");
-              location.replace(data.next || "/notes/");
+              location.replace(data.next || "/");
             });
           })
           .catch(function (err) {
