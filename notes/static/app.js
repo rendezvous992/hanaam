@@ -1098,6 +1098,7 @@
       '<div class="modal__footer">' +
       '<button type="button" class="btn btn--danger btn--sm" data-act="delete">삭제</button>' +
       '<div class="modal__footer-right">' +
+      (String(n.body || "").trim() ? '<button type="button" class="btn btn--ghost btn--sm" data-act="gpt-sum" title="요약 요청과 노트 내용을 복사하고 챗GPT를 엽니다 (키 필요 없음)">챗GPT로 요약</button>' : "") +
       (String(n.body || "").trim().length >= 30 ? '<button type="button" class="btn btn--ghost btn--sm" data-act="ai-sum"' + (sumReady ? "" : ' title="' + esc(aiWhy) + '"') + ">✦ " + esc(sumName) + " 요약</button>" : "") +
       '<button type="button" class="btn btn--ghost btn--sm" data-act="print">인쇄</button>' +
       '<button type="button" class="btn btn--ghost btn--sm" data-act="edit">수정</button>' +
@@ -1180,7 +1181,23 @@
       if (!act) return;
       const what = act.getAttribute("data-act");
       if (what === "close") ctx.close();
-      else if (what === "ai-sum") {
+      else if (what === "gpt-sum") {
+        // 키 없이: 요청문+노트를 복사하고 챗GPT 를 연다. 짧으면 주소에 담아 바로 입력창에 채운다
+        const text =
+          "아래 기업 미팅·IR 노트를 자산운용사 리서치 노트 형식으로 한국어로 정리해줘.\n" +
+          "형식: # 한 줄 요약 / ## 핵심 내용 (숫자는 단위·시점 포함 불릿) / ## Q&A (있을 때만) / ## 투자 포인트·리스크.\n" +
+          "원문에 없는 내용은 만들지 말고 불확실하면 (확인 필요)라고 적어줘.\n\n" +
+          "[" + companyLabel(n) + " · " + n.title + " · " + dotDate(n.date) + "]\n" + String(n.body || "").trim();
+        let copied = true;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (err) {
+          copied = false;
+        }
+        const url = text.length < 1800 ? "https://chatgpt.com/?q=" + encodeURIComponent(text) : "https://chatgpt.com/";
+        window.open(url, "_blank", "noopener");
+        toast(copied ? "요약 요청을 복사했습니다. 챗GPT 입력창에 붙여 넣기(Ctrl+V) 후 보내세요. 결과는 ‘수정’으로 노트에 붙이면 됩니다." : "챗GPT를 열었습니다. 노트 본문을 복사해 붙여 넣어 주세요.", !copied);
+      } else if (what === "ai-sum") {
         if (!sumReady) return explainAI();
         act.disabled = true;
         act.textContent = "요약하는 중…";
