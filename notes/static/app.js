@@ -122,8 +122,24 @@
   // 서버 모드 + AI 리서치 권한 + AI 키가 있으면 AI 기능(물어보기·요약)을 켠다
   let aiReady = false; // 물어보기(Claude)
   let sumReady = false; // 요약 (Grok 우선, 없으면 Claude)
-  let sumName = "AI";
+  let sumName = "Grok";
   let serverApi = null;
+  let aiWhy = "서버(데이터베이스)가 연결되지 않아 이 브라우저 저장 모드에서는 AI 를 쓸 수 없습니다."; // 안 될 때 이유
+  function explainAI() {
+    const m = openModal({
+      title: "AI 요약을 쓰려면",
+      size: "modal--narrow",
+      html:
+        '<div class="modal__body"><p class="hint" style="font-size:14px;color:var(--text);line-height:1.8">' + esc(aiWhy) + "</p>" +
+        '<ol class="hint" style="font-size:13px;line-height:1.9;padding-left:18px;margin:10px 0">' +
+        "<li>Vercel 프로젝트 → <b>Storage</b> → Neon(Postgres) 만들고 <b>Connect</b></li>" +
+        "<li><b>Settings → Environment Variables</b> 에 <code>XAI_API_KEY</code>(Grok) 넣기</li>" +
+        "<li><b>Deployments → Redeploy</b> 후 사이트에서 로그인</li>" +
+        "<li>계정 관리에서 내 계정에 <b>AI 리서치</b> 권한 (최고 관리자는 자동)</li></ol>" +
+        '<div class="modal__footer"><div class="modal__footer-right"><button type="button" class="btn btn--primary" data-close>확인</button></div></div></div>',
+    });
+    m.modal.querySelector("[data-close]").addEventListener("click", () => m.close());
+  }
   async function aiSummarize(text, company, title) {
     const out = await serverApi("POST", "/api/ai/summarize", { text, company, title });
     if (out.provider) sumName = out.provider;
@@ -1053,7 +1069,7 @@
       '<div class="modal__footer">' +
       '<button type="button" class="btn btn--danger btn--sm" data-act="delete">삭제</button>' +
       '<div class="modal__footer-right">' +
-      (sumReady && String(n.body || "").trim().length >= 30 ? '<button type="button" class="btn btn--ghost btn--sm" data-act="ai-sum">✦ ' + esc(sumName) + " 요약</button>" : "") +
+      (String(n.body || "").trim().length >= 30 ? '<button type="button" class="btn btn--ghost btn--sm" data-act="ai-sum"' + (sumReady ? "" : ' title="' + esc(aiWhy) + '"') + ">✦ " + esc(sumName) + " 요약</button>" : "") +
       '<button type="button" class="btn btn--ghost btn--sm" data-act="print">인쇄</button>' +
       '<button type="button" class="btn btn--ghost btn--sm" data-act="edit">수정</button>' +
       '<button type="button" class="btn btn--primary btn--sm" data-act="close">닫기</button>' +
@@ -1136,6 +1152,7 @@
       const what = act.getAttribute("data-act");
       if (what === "close") ctx.close();
       else if (what === "ai-sum") {
+        if (!sumReady) return explainAI();
         act.disabled = true;
         act.textContent = "요약하는 중…";
         const bodyEl = $(".detail-body", ctx.modal);
@@ -1281,7 +1298,7 @@
       '<input class="input" name="title" maxlength="200" value="' + esc(n.title) + '"></label>' +
       '<label class="field"><span class="field__label">본문 <span class="field__label-note">— <code># 제목</code> <code>## 소제목</code> <code>- 목록</code> <code>Q. / A.</code> 형식이 보기 좋게 정리됩니다</span></span>' +
       '<textarea class="input input--textarea input--body" name="body" rows="10">' + esc(n.body) + "</textarea></label>" +
-      '<div class="ai-body-row"><button type="button" class="btn btn--ghost btn--sm" data-act="ai-body"' + (sumReady && String(n.body || "").trim().length >= 30 ? "" : " hidden") + ">✦ " + esc(sumName) + " 로 노트 형식 정리</button></div>" +
+      '<div class="ai-body-row"><button type="button" class="btn btn--ghost btn--sm" data-act="ai-body"' + (String(n.body || "").trim().length >= 30 ? "" : " hidden") + ">✦ " + esc(sumName) + " 로 노트 형식 정리</button></div>" +
       '<div class="field"><span class="field__label">첨부 파일 <span class="field__label-note">— ' + (store.server ? "서버에 저장되어 부서원과 함께 봅니다" : "이 브라우저에만 저장됩니다") + "</span></span>" +
       '<ul class="file-list" data-kept></ul>' +
       '<input class="input input--file" type="file" name="files" multiple></div>' +
@@ -1386,7 +1403,7 @@
     form.addEventListener("input", (e) => {
       if (e.target.name !== "body") return;
       const b = form.querySelector('[data-act="ai-body"]');
-      if (b) b.hidden = !(sumReady && e.target.value.trim().length >= 30);
+      if (b) b.hidden = e.target.value.trim().length < 30;
     });
 
     async function importLink() {
@@ -1436,7 +1453,7 @@
             f("body").value = (page.site ? "출처: " + page.site + "\n" : "") + page.text;
           }
           const aiBtn = form.querySelector('[data-act="ai-body"]');
-          if (aiBtn) aiBtn.hidden = !(sumReady && f("body").value.trim().length >= 30);
+          if (aiBtn) aiBtn.hidden = f("body").value.trim().length < 30;
           toast(page.text ? "제목·본문을 가져왔습니다" + (company ? " (종목: " + company.company + ")" : "") + "." : page.detail || "본문을 찾지 못했습니다. 제목만 채웠습니다.", !page.text);
         } catch (err) {
           toast("본문은 가져오지 못했습니다: " + err.message + (found ? " (종목은 채웠습니다)" : ""), true);
@@ -1463,6 +1480,7 @@
       const what = act.getAttribute("data-act");
       if (what === "import") importLink();
       else if (what === "ai-body") {
+        if (!sumReady) return explainAI();
         const text = f("body").value.trim();
         if (text.length < 30) return toast("정리할 본문이 너무 짧습니다.", true);
         act.disabled = true;
@@ -2532,8 +2550,11 @@
       store = serverStore(session.api);
       serverApi = session.api;
       CURRENT_USER = session.me.displayName || session.me.username;
+      aiWhy = "내 계정에 'AI 리서치' 권한이 없습니다. 계정 관리자에게 권한을 요청하세요.";
       if ((session.me.permissions || []).includes("ai_research")) {
+        aiWhy = "AI 연결 상태를 확인하는 중입니다. 잠시 뒤 다시 눌러 주세요.";
         session.api("GET", "/api/integrations").then((st) => {
+          aiWhy = st && st.summary ? "" : "관리자가 Vercel 환경변수에 XAI_API_KEY(Grok 키)를 넣고 Redeploy 해야 합니다.";
           aiReady = !!(st && st.ai);
           sumReady = !!(st && st.summary);
           if (st && st.summaryProvider) sumName = st.summaryProvider;

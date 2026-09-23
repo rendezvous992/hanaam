@@ -814,13 +814,24 @@
     refresh();
     if (q.get("new") === "1") openEditor(null, { date: q.get("date") || K.today() });
     const sess = await K.session();
-    if (sess.server && $("#dart-ir-wrap")) {
+    if ($("#dart-ir-wrap")) {
       $("#dart-ir-wrap").hidden = false;
       $("#dart-ir").addEventListener("click", (e) => {
         e.preventDefault();
-        showDartIr();
+        if (sess.server) showDartIr();
+        else
+          K.modal({
+            title: "DART IR 일정 자동 반영",
+            size: "modal--narrow",
+            html:
+              '<div class="modal__body"><p class="hint" style="font-size:14px;color:var(--text);line-height:1.8">지금은 서버(데이터베이스) 없이 열려 있어 DART 를 읽을 수 없습니다.</p>' +
+              '<ol class="hint" style="font-size:13px;line-height:1.9;padding-left:18px">' +
+              "<li>Vercel → Storage → Neon(Postgres) 만들고 Connect</li><li>Settings → Environment Variables 에 <code>DART_API_KEY</code> (opendart.fss.or.kr 무료 발급)</li>" +
+              "<li>Redeploy 후 로그인 → 이 링크에서 ‘캘린더에 반영’ (매일 21:00 자동)</li></ol></div>",
+          });
       });
-      loadDartStatus();
+      if (sess.server) loadDartStatus();
+      else $("#dart-ir-last").textContent = "서버 연결 필요";
     }
   })();
 })();
