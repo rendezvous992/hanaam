@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#00857b">
+  <title>로그인 · 노트</title>
+  <link rel="icon" type="image/svg+xml" href="/static/app-icon.svg">
+  <link rel="stylesheet" href="/static/shell.css">
+  <link rel="stylesheet" href="/static/tenant.css">
+  <style>
+    .auth-page { display: flex; align-items: center; justify-content: center; }
+    .auth-form { display: flex; flex-direction: column; }
+    .auth-card__mark { display: grid; place-items: center; width: 52px; height: 52px; }
+    .auth-card__mark img { width: 52px; height: 52px; }
+  </style>
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <div class="auth-card__brand"><span class="auth-card__mark"><img src="/static/app-icon.svg" alt=""></span></div>
+    <h1 class="auth-card__title">기업 노트 아카이브</h1>
+    <p class="auth-card__lead">부서 계정으로 로그인해 주세요.<br>계정이 없으면 관리자에게 요청하세요.</p>
+
+    <div class="banner banner--error" id="login-error" role="alert" hidden></div>
+
+    <form class="auth-form" id="login-form" novalidate>
+      <label class="field">
+        <span class="field__label">아이디</span>
+        <input class="input" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required autofocus>
+      </label>
+      <label class="field">
+        <span class="field__label">비밀번호</span>
+        <span class="pw-wrap">
+          <input class="input" name="password" type="password" autocomplete="current-password" required>
+          <button type="button" class="pw-toggle" aria-label="비밀번호 보기" aria-pressed="false">
+            <svg class="pw-toggle__off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <svg class="pw-toggle__on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a10 10 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>
+          </button>
+        </span>
+      </label>
+      <button class="btn btn--primary" type="submit">로그인</button>
+    </form>
+    <p class="auth-foot">비밀번호를 잊었다면 관리자에게 재설정을 요청하세요.</p>
+  </main>
+
+  <script>
+    (function () {
+      var form = document.getElementById("login-form");
+      var error = document.getElementById("login-error");
+      var toggle = document.querySelector(".pw-toggle");
+      var pw = form.elements.password;
+
+      toggle.addEventListener("click", function () {
+        var show = pw.type === "password";
+        pw.type = show ? "text" : "password";
+        toggle.classList.toggle("is-shown", show);
+        toggle.setAttribute("aria-pressed", String(show));
+        toggle.setAttribute("aria-label", show ? "비밀번호 숨기기" : "비밀번호 보기");
+      });
+
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var username = form.elements.username.value.trim();
+        if (!username || !pw.value) {
+          error.textContent = "아이디와 비밀번호를 입력해 주세요.";
+          error.hidden = false;
+          return;
+        }
+        var btn = form.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        error.hidden = true;
+        fetch("/api/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "X-Hana": "1" },
+          body: JSON.stringify({
+            username: username,
+            password: pw.value,
+            next: new URLSearchParams(location.search).get("next") || "/notes/"
+          })
+        })
+          .then(function (res) {
+            return res.json().catch(function () { return {}; }).then(function (data) {
+              if (!res.ok) throw new Error(data.detail || "로그인하지 못했습니다.");
+              location.replace(data.next || "/notes/");
+            });
+          })
+          .catch(function (err) {
+            error.textContent = err.message || "서버에 연결하지 못했습니다.";
+            error.hidden = false;
+            btn.disabled = false;
+            pw.select();
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

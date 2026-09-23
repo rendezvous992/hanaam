@@ -122,23 +122,15 @@
     }
   }
 
-  const CURRENT_USER = ($(".hana-account-copy strong") || {}).textContent || "donghwi.kim";
+  let CURRENT_USER = ($(".hana-account-copy strong") || {}).textContent || "donghwi.kim";
 
   /* ================================================================
    * 저장소
+   *  - 서버 모드: /api/* 로 서버(SQLite)에 저장 → 부서원이 같은 노트를 본다
+   *  - 브라우저 모드: localStorage + IndexedDB (서버 없이 파일만 열었을 때)
    * ================================================================ */
-  let notes = readJSON(NOTES_KEY, null);
-  if (!Array.isArray(notes)) {
-    notes = SEED_NOTES.map((n) => Object.assign({}, n));
-    writeJSON(NOTES_KEY, notes);
-  }
+  let notes = [];
 
-  function saveNotes() {
-    return writeJSON(NOTES_KEY, notes);
-  }
-  function nextId() {
-    return notes.reduce((max, n) => Math.max(max, n.id), 0) + 1;
-  }
   function getNote(id) {
     return notes.find((n) => n.id === Number(id)) || null;
   }
@@ -177,21 +169,145 @@
     };
   })();
 
-  async function storeFile(fileOrBlob, name) {
-    const meta = {
-      id: uid("f"),
-      name: name || fileOrBlob.name || "file",
-      size: fileOrBlob.size,
-      type: fileOrBlob.type || "",
+  function replaceNote(updated) {
+    const i = notes.findIndex((n) => n.id === updated.id);
+    if (i >= 0) notes[i] = updated;
+    else notes.push(updated);
+    return updated;
+  }
+
+  const localStore = {
+    server: false,
+    async load() {
+      let list = readJSON(NOTES_KEY, null);
+      if (!Array.isArray(list)) {
+        list = SEED_NOTES.map((n) => Object.assign({}, n));
+        writeJSON(NOTES_KEY, list);
+      }
+      return list;
+    },
+    persist() {
+      if (!writeJSON(NOTES_KEY, notes)) throw new Error("브라우저 저장 공간에 저장하지 못했습니다.");
+    },
+    async create(data) {
+      const note = Object.assign(
+        { id: notes.reduce((max, n) => Math.max(max, n.id), 0) + 1, files: [], audio: null, review: null, createdAt: new Date().toISOString() },
+        data
+      );
+      notes.push(note);
+      try {
+        this.persist();
+      } catch (e) {
+        notes.pop();
+        throw e;
+      }
+      return note;
+    },
+    async update(note, data) {
+      Object.assign(note, data, { updatedAt: new Date().toISOString() });
+      this.persist();
+      return note;
+    },
+    async remove(note) {
+      notes = notes.filter((o) => o.id !== note.id);
+      this.persist();
+      const ids = (note.files || []).map((f) => f.id);
+      if (note.audio) ids.push(note.audio.id);
+      ids.forEach((id) => fileStore.del(id).catch(() => {}));
+    },
+    async addFile(note, blob, name, kind, duration) {
+      const meta = { id: uid("f"), name: name || blob.name || "file", size: blob.size, type: blob.type || "", duration: Math.round(duration || 0) };
+      await fileStore.put(meta.id, blob);
+      if (kind === "audio") {
+        if (note.audio) fileStore.del(note.audio.id).catch(() => {});
+        note.audio = meta;
+      } else {
+        note.files = (note.files || []).concat(meta);
+      }
+      this.persist();
+      return meta;
+    },
+    async removeFile(note, fileId) {
+      note.files = (note.files || []).filter((f) => f.id !== fileId);
+      if (note.audio && note.audio.id === fileId) note.audio = null;
+      this.persist();
+      fileStore.del(fileId).catch(() => {});
+    },
+    // { url, revoke } 또는 null
+    async fileUrl(meta) {
+      const blob = await fileStore.get(meta.id).catch(() => null);
+      return blob ? { url: URL.createObjectURL(blob), revoke: true } : null;
+    },
+    async downloadUrl(meta) {
+      return this.fileUrl(meta);
+    },
+    savedList: async () => readJSON(SAVED_KEY, []),
+    async savedAdd(item) {
+      const saved = readJSON(SAVED_KEY, []);
+      const full = Object.assign({ id: uid("a"), savedAt: new Date().toISOString() }, item);
+      saved.unshift(full);
+      if (!writeJSON(SAVED_KEY, saved)) throw new Error("브라우저 저장 공간에 저장하지 못했습니다.");
+      return full;
+    },
+  };
+
+  function serverStore(api) {
+    const noteBody = (data) => {
+      const out = {};
+      ["company", "ticker", "category", "type", "author", "date", "title", "body", "link", "review"].forEach((k) => {
+        if (k in data) out[k] = data[k];
+      });
+      return out;
     };
-    await fileStore.put(meta.id, fileOrBlob);
-    return meta;
+    return {
+      server: true,
+      load: () => api("GET", "/api/notes"),
+      async create(data) {
+        return replaceNote(await api("POST", "/api/notes", noteBody(data)));
+      },
+      async update(note, data) {
+        const merged = Object.assign({}, note, data);
+        const saved = await api("PUT", "/api/notes/" + note.id, noteBody(merged));
+        return replaceNote(saved);
+      },
+      async remove(note) {
+        await api("DELETE", "/api/notes/" + note.id);
+        notes = notes.filter((o) => o.id !== note.id);
+      },
+      async addFile(note, blob, name, kind, duration) {
+        const form = new FormData();
+        form.append("file", blob, name || blob.name || "file");
+        form.append("kind", kind);
+        form.append("duration", String(Math.round(duration || 0)));
+        const res = await fetch("/api/notes/" + note.id + "/files", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "X-Hana": "1" },
+          body: form,
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error((data && typeof data.detail === "string" && data.detail) || "파일을 올리지 못했습니다 (" + res.status + ")");
+        if (kind === "audio") note.audio = data;
+        else note.files = (note.files || []).concat(data);
+        return data;
+      },
+      async removeFile(note, fileId) {
+        await api("DELETE", "/api/files/" + encodeURIComponent(fileId));
+        note.files = (note.files || []).filter((f) => f.id !== fileId);
+        if (note.audio && note.audio.id === fileId) note.audio = null;
+      },
+      async fileUrl(meta) {
+        return { url: "/api/files/" + encodeURIComponent(meta.id), revoke: false };
+      },
+      async downloadUrl(meta) {
+        return { url: "/api/files/" + encodeURIComponent(meta.id) + "?download=1", revoke: false };
+      },
+      savedList: () => api("GET", "/api/saved"),
+      savedAdd: (item) => api("POST", "/api/saved", item),
+    };
   }
-  function removeNoteFiles(note) {
-    const ids = (note.files || []).map((f) => f.id);
-    if (note.audio) ids.push(note.audio.id);
-    ids.forEach((id) => fileStore.del(id).catch(() => {}));
-  }
+
+  let store = localStore;
 
   function knownCompanies() {
     const map = new Map();
@@ -912,17 +1028,20 @@
     window.history.replaceState(null, "", window.location.pathname + window.location.search + "#note-" + n.id);
 
     if (n.audio) {
-      fileStore
-        .get(n.audio.id)
-        .then((blob) => {
+      store
+        .fileUrl(n.audio)
+        .then((got) => {
           const wrap = $("[data-audio]", ctx.modal);
-          if (!blob || !wrap) {
-            if (wrap) wrap.insertAdjacentHTML("beforeend", '<span class="detail-audio-note">이 브라우저에서 녹음 파일을 찾을 수 없습니다.</span>');
+          if (!wrap || !document.contains(wrap)) {
+            if (got && got.revoke) URL.revokeObjectURL(got.url);
             return;
           }
-          const url = URL.createObjectURL(blob);
-          urls.push(url);
-          player = mountPlayer(wrap, url);
+          if (!got) {
+            wrap.insertAdjacentHTML("beforeend", '<span class="detail-audio-note">녹음 파일을 찾을 수 없습니다.</span>');
+            return;
+          }
+          if (got.revoke) urls.push(got.url);
+          player = mountPlayer(wrap, got.url);
         })
         .catch(() => toast("녹음 파일을 불러오지 못했습니다.", true));
     }
@@ -932,15 +1051,14 @@
       if (fileLink) {
         e.preventDefault();
         const meta = (n.files || []).find((f) => f.id === fileLink.getAttribute("data-file"));
-        const blob = meta ? await fileStore.get(meta.id).catch(() => null) : null;
-        if (!blob) {
-          toast("이 브라우저에서 첨부 파일을 찾을 수 없습니다.", true);
+        const got = meta ? await store.downloadUrl(meta).catch(() => null) : null;
+        if (!got) {
+          toast("첨부 파일을 찾을 수 없습니다.", true);
           return;
         }
-        const url = URL.createObjectURL(blob);
-        urls.push(url);
+        if (got.revoke) urls.push(got.url);
         const a = document.createElement("a");
-        a.href = url;
+        a.href = got.url;
         a.download = meta.name;
         document.body.appendChild(a);
         a.click();
@@ -962,16 +1080,24 @@
         ctx.close(true);
         openEditor(n);
       } else if (what === "approve") {
-        n.review = null;
-        saveNotes();
-        render();
-        ctx.close(true);
-        toast("확인 완료로 표시했습니다.");
+        act.disabled = true;
+        try {
+          await store.update(n, { review: null });
+          render();
+          ctx.close(true);
+          toast("확인 완료로 표시했습니다.");
+        } catch (err) {
+          act.disabled = false;
+          toast(err.message, true);
+        }
       } else if (what === "delete") {
         if (!(await confirmDialog("‘" + n.title + "’ 노트를 삭제할까요? 되돌릴 수 없습니다.", "삭제", true))) return;
-        notes = notes.filter((o) => o.id !== n.id);
-        saveNotes();
-        removeNoteFiles(n);
+        try {
+          await store.remove(n);
+        } catch (err) {
+          toast(err.message, true);
+          return;
+        }
         ctx.close(true);
         render();
         toast("노트를 삭제했습니다.");
@@ -1205,9 +1331,13 @@
       else if (what === "cancel") ctx.close();
       else if (what === "delete") {
         if (!(await confirmDialog("‘" + n.title + "’ 노트를 삭제할까요? 되돌릴 수 없습니다.", "삭제", true))) return;
-        notes = notes.filter((o) => o.id !== n.id);
-        saveNotes();
-        removeNoteFiles(n);
+        try {
+          await store.remove(n);
+        } catch (err) {
+          toast(err.message, true);
+          return;
+        }
+        dirty = false;
         ctx.close(true);
         render();
         toast("노트를 삭제했습니다.");
@@ -1248,11 +1378,8 @@
       }
       const submit = form.querySelector('button[type="submit"]');
       submit.disabled = true;
+      let target = null;
       try {
-        const added = [];
-        for (const file of Array.from(f("files").files || [])) added.push(await storeFile(file));
-        const removed = (n.files || []).filter((x) => !keptFiles.some((k) => k.id === x.id));
-        removed.forEach((x) => fileStore.del(x.id).catch(() => {}));
         const type = f("type").value;
         const data = {
           company, ticker, category: cat, type, date,
@@ -1260,29 +1387,30 @@
           title: f("title").value.trim() || company + " " + type,
           body: f("body").value,
           link: f("link").value.trim(),
-          files: keptFiles.concat(added),
-        };
-        let target;
-        if (editing) {
-          target = existing;
-          Object.assign(target, data, { updatedAt: new Date().toISOString() });
           // 종목을 고쳤으면 ‘종목 확인 필요’ 표시는 풀어 준다
-          if (target.review && company !== "미지정") target.review = null;
-        } else {
-          target = Object.assign({ id: nextId(), audio: null, review: null, createdAt: new Date().toISOString() }, data);
-          notes.push(target);
-        }
-        if (!saveNotes()) return;
-        dirty = false;
-        ctx.close(true);
-        render();
-        toast(editing ? "노트를 수정했습니다." : "노트를 등록했습니다.");
-        openDetail(target.id);
+          review: editing && existing.review && company === "미지정" ? existing.review : null,
+        };
+        target = editing ? await store.update(existing, data) : await store.create(data);
       } catch (err) {
-        toast("첨부 파일을 저장하지 못했습니다: " + err.message, true);
-      } finally {
+        toast("저장하지 못했습니다: " + err.message, true);
         submit.disabled = false;
+        return;
       }
+      dirty = false;
+      // 노트 본문은 저장됐다. 첨부 변경은 하나씩 반영하고, 실패한 것만 알린다
+      const failures = [];
+      for (const old of (n.files || []).filter((x) => !keptFiles.some((k) => k.id === x.id))) {
+        await store.removeFile(target, old.id).catch(() => failures.push(old.name + " 삭제"));
+      }
+      for (const file of Array.from(f("files").files || [])) {
+        await store.addFile(target, file, file.name, "attach").catch((err) => failures.push(file.name + ": " + err.message));
+      }
+      submit.disabled = false;
+      ctx.close(true);
+      render();
+      if (failures.length) toast("노트는 저장했지만 첨부 파일 일부를 처리하지 못했습니다 — " + failures.join(", "), true);
+      else toast(editing ? "노트를 수정했습니다." : "노트를 등록했습니다.");
+      openDetail(target.id);
     });
 
     if (editing) return;
@@ -1350,8 +1478,7 @@
           const probe = base + "\n" + text.slice(0, 2000);
           const found = detectCompany(probe);
           const type = detectType(base) !== "기타" ? detectType(base) : detectType(probe);
-          const note = {
-            id: nextId(),
+          const note = await store.create({
             company: found ? found.company : "미지정",
             ticker: found ? found.ticker : "",
             category: detectCategory(base) !== "etc" ? detectCategory(base) : detectCategory(probe),
@@ -1361,18 +1488,13 @@
             title: base.replace(/^(20\d{2}[-._]?\d{2}[-._]?\d{2})[\s_-]*/, "").replace(/[_]+/g, " ").trim() || base,
             body: text,
             link: "",
-            files: [],
-            audio: null,
             review: found ? null : { reason: "종목을 찾지 못했습니다" },
-            createdAt: new Date().toISOString(),
-          };
-          notes.push(note);
+          });
           created.push(note);
         } catch (err) {
-          failed.push(file.name);
+          failed.push(file.name + (err && err.message ? " (" + err.message + ")" : ""));
         }
       }
-      saveNotes();
       render();
       bulkBusy = false;
       const needReview = created.filter((x) => x.review).length;
@@ -1380,7 +1502,7 @@
         '<div class="bulk-result ' + (failed.length || needReview ? "bulk-result--partial" : "bulk-result--ok") + '">' +
         created.length + "건을 등록했습니다." +
         (needReview ? " 종목을 못 찾은 " + needReview + "건은 ‘확인 필요’로 표시했습니다." : "") +
-        (failed.length ? "<ul>" + failed.map((name) => "<li>읽지 못함: " + esc(name) + "</li>").join("") + "</ul>" : "") +
+        (failed.length ? "<ul>" + failed.map((name) => "<li>등록 못 함: " + esc(name) + "</li>").join("") + "</ul>" : "") +
         '<ul class="bulk-created">' +
         created
           .map(
@@ -1711,11 +1833,8 @@
         }
         saveBtn.disabled = true;
         try {
-          const meta = await storeFile(result.blob, result.name);
-          meta.duration = Math.round(result.duration || 0);
           const type = currentType();
-          const note = {
-            id: nextId(),
+          const note = await store.create({
             company,
             ticker: ticker || knownCompanies().get(company) || "",
             category: (m.querySelector('input[name="rec-category"]:checked') || {}).value || "etc",
@@ -1725,17 +1844,18 @@
             title: company + " " + type,
             body: "",
             link: "",
-            files: [],
-            audio: meta,
             review: null,
-            createdAt: new Date().toISOString(),
-          };
-          notes.push(note);
-          if (!saveNotes()) {
-            notes.pop();
-            fileStore.del(meta.id).catch(() => {});
-            saveBtn.disabled = false;
-            return;
+          });
+          saveBtn.textContent = "녹음 올리는 중…";
+          try {
+            await store.addFile(note, result.blob, result.name, "audio", result.duration);
+          } catch (err) {
+            // 녹음 없이 빈 노트만 남지 않도록 되돌린다
+            await store.remove(note).catch(() => {});
+            render();
+            throw err;
+          } finally {
+            saveBtn.textContent = "노트로 저장";
           }
           result = null;
           ctx.close(true);
@@ -1945,22 +2065,24 @@
       ask.result.hidden = true;
       ask.result.innerHTML = "";
     } else if (act.getAttribute("data-act") === "save" && ask.last) {
-      const saved = readJSON(SAVED_KEY, []);
-      saved.unshift({
-        id: uid("a"),
-        question: ask.last.question,
-        answerHtml: ask.last.answerHtml,
-        notes: ask.last.noteIds.map((id) => {
-          const n = getNote(id);
-          return n ? { id: n.id, label: companyLabel(n) + " · " + n.title } : { id, label: "노트 #" + id };
-        }),
-        savedAt: new Date().toISOString(),
-      });
-      if (writeJSON(SAVED_KEY, saved)) {
-        act.disabled = true;
-        act.textContent = "저장됨 ✓";
-        toast("답변을 저장했습니다. 🔖에서 다시 볼 수 있습니다.");
-      }
+      act.disabled = true;
+      store
+        .savedAdd({
+          question: ask.last.question,
+          answerHtml: ask.last.answerHtml,
+          notes: ask.last.noteIds.map((id) => {
+            const n = getNote(id);
+            return n ? { id: n.id, label: companyLabel(n) + " · " + n.title } : { id, label: "노트 #" + id };
+          }),
+        })
+        .then(() => {
+          act.textContent = "저장됨 ✓";
+          toast("답변을 저장했습니다. 🔖에서 다시 볼 수 있습니다.");
+        })
+        .catch((err) => {
+          act.disabled = false;
+          toast("답변을 저장하지 못했습니다: " + err.message, true);
+        });
     }
   });
 
@@ -2109,17 +2231,54 @@
 
   // 다른 탭에서 노트를 바꾸면 따라간다
   window.addEventListener("storage", (e) => {
-    if (e.key === NOTES_KEY) {
+    if (!store.server && e.key === NOTES_KEY) {
       notes = readJSON(NOTES_KEY, []);
       render();
     }
   });
+
+  // 서버 모드: 다른 부서원이 올린 노트가 보이도록, 창으로 돌아올 때 목록을 다시 받는다
+  let lastRefresh = Date.now();
+  async function refreshFromServer() {
+    if (!store.server || modalStack.length || Date.now() - lastRefresh < 15000) return;
+    lastRefresh = Date.now();
+    try {
+      notes = await store.load();
+      render();
+    } catch (e) {
+      /* 잠깐의 네트워크 오류는 무시 */
+    }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshFromServer();
+  });
+  window.addEventListener("focus", refreshFromServer);
 
   readUrl();
   if (detailFilterCount()) {
     el.filtersToggle.setAttribute("aria-expanded", "true");
     el.filters.hidden = false;
   }
-  render();
-  openFromHash();
+
+  (async function init() {
+    const session = await (window.hanaSession || Promise.resolve({ server: false })).catch((err) => {
+      toast("서버에 연결하지 못했습니다: " + err.message, true);
+      return null;
+    });
+    if (!session) return;
+    if (session.server) {
+      store = serverStore(session.api);
+      CURRENT_USER = session.me.displayName || session.me.username;
+      // 서버 목록을 받기 전까지 원본 화면에 박혀 있던 예시 노트가 보이지 않게 한다
+      el.noteList.innerHTML = "";
+    }
+    try {
+      notes = await store.load();
+    } catch (err) {
+      toast("노트를 불러오지 못했습니다: " + err.message, true);
+      notes = [];
+    }
+    render();
+    openFromHash();
+  })();
 })();

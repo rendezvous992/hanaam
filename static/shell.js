@@ -131,6 +131,125 @@
     });
   });
 
+  /* ---------- 서버 모드: 로그인한 사용자 표시 · 로그아웃 · 비밀번호 변경 ---------- */
+  // 서버가 내준 화면에는 <meta name="hana-mode" content="server"> 가 붙는다.
+  // 파일로 열거나 정적 호스팅으로 열면 서버 없이(브라우저 저장) 동작한다.
+  var serverMode = !!document.querySelector('meta[name="hana-mode"][content="server"]');
+
+  function apiFetch(method, url, body) {
+    var opts = { method: method, credentials: "same-origin", headers: { "X-Hana": "1" } };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(url, opts).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (data) {
+        if (res.status === 401 && url !== "/api/password") {
+          window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname + window.location.search);
+        }
+        if (!res.ok) throw new Error((data && typeof data.detail === "string" && data.detail) || "서버 오류 (" + res.status + ")");
+        return data;
+      });
+    });
+  }
+
+  function applyUser(me) {
+    var name = me.displayName || me.username;
+    var strong = document.querySelector(".hana-account-copy strong");
+    var small = document.querySelector(".hana-account-copy small");
+    var avatar = document.querySelector(".hana-user-avatar");
+    var metaLink = document.querySelector(".hana-topbar-meta > a");
+    if (strong) strong.textContent = name;
+    if (small) small.textContent = (me.role === "admin" ? "관리자" : "부서원") + " · " + me.username;
+    if (avatar) avatar.textContent = name.charAt(0).toUpperCase();
+    if (metaLink) metaLink.textContent = name;
+    document.querySelectorAll(".hana-account, .hana-topbar-meta > a").forEach(function (a) {
+      a.removeAttribute("data-hana-stub");
+      a.setAttribute("href", "#account");
+      a.setAttribute("data-hana-account", "");
+      a.title = "비밀번호 변경";
+    });
+  }
+
+  function openPasswordDialog() {
+    var overlay = document.createElement("div");
+    overlay.className = "overlay";
+    overlay.innerHTML =
+      '<div class="modal modal--narrow" role="dialog" aria-modal="true" aria-labelledby="pw-title">' +
+      '<div class="modal__header"><h2 id="pw-title">비밀번호 변경</h2><button type="button" class="modal__close" aria-label="닫기">×</button></div>' +
+      '<form class="modal__body" novalidate>' +
+      '<div class="banner banner--error banner--inline" hidden></div>' +
+      '<label class="field"><span class="field__label">현재 비밀번호</span><input class="input" type="password" name="current" autocomplete="current-password" required></label>' +
+      '<label class="field"><span class="field__label">새 비밀번호 (8자 이상)</span><input class="input" type="password" name="next" autocomplete="new-password" minlength="8" required></label>' +
+      '<label class="field"><span class="field__label">새 비밀번호 확인</span><input class="input" type="password" name="confirm" autocomplete="new-password" required></label>' +
+      '<div class="modal__footer"><div class="modal__footer-right"><button type="button" class="btn btn--ghost" data-close>취소</button>' +
+      '<button type="submit" class="btn btn--primary">변경</button></div></div></form></div>';
+    body.appendChild(overlay);
+    body.style.overflow = "hidden";
+    var form = overlay.querySelector("form");
+    var err = overlay.querySelector(".banner");
+    function close() {
+      overlay.remove();
+      body.style.overflow = "";
+      document.removeEventListener("keydown", onKey, true);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        close();
+      }
+    }
+    document.addEventListener("keydown", onKey, true);
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay || e.target.closest(".modal__close, [data-close]")) close();
+    });
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var f = form.elements;
+      function fail(msg) {
+        err.textContent = msg;
+        err.hidden = false;
+      }
+      if (f.next.value.length < 8) return fail("새 비밀번호는 8자 이상이어야 합니다.");
+      if (f.next.value !== f.confirm.value) return fail("새 비밀번호가 서로 다릅니다.");
+      apiFetch("POST", "/api/password", { current: f.current.value, new: f.next.value })
+        .then(function () {
+          close();
+          toast("비밀번호를 바꿨습니다.");
+        })
+        .catch(function (e2) {
+          fail(e2.message);
+        });
+    });
+    form.elements.current.focus();
+  }
+
+  // app.js 등 다른 스크립트가 기다릴 수 있도록 세션 정보를 약속(Promise)으로 내놓는다
+  window.hanaSession = serverMode
+    ? apiFetch("GET", "/api/me").then(function (me) {
+        applyUser(me);
+        return { server: true, me: me, api: apiFetch };
+      })
+    : Promise.resolve({ server: false, me: null, api: null });
+
+  if (serverMode) {
+    document.addEventListener("click", function (e) {
+      if (e.target.closest("[data-hana-account]")) {
+        e.preventDefault();
+        openPasswordDialog();
+      }
+    });
+    document.querySelectorAll("form[data-hana-stub-form]").forEach(function (form) {
+      form.removeAttribute("data-hana-stub-form");
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        apiFetch("POST", "/api/logout").finally(function () {
+          window.location.href = "/login";
+        });
+      });
+    });
+  }
+
   /* ---------- 복제되지 않은 메뉴 ---------- */
   // data-hana-stub 이 붙은 링크는 이 저장소에 페이지가 없다.
   document.addEventListener("click", function (e) {

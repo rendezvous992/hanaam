@@ -21,7 +21,10 @@
     return d.getUTCFullYear() + ". " + pad(d.getUTCMonth() + 1) + ". " + pad(d.getUTCDate()) +
       " (" + WEEKDAYS[d.getUTCDay()] + ") " + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes());
   }
-  function read() {
+  // 서버 모드면 /api/saved, 아니면 이 브라우저의 localStorage
+  let session = { server: false, api: null };
+
+  function readLocal() {
     try {
       const v = JSON.parse(window.localStorage.getItem(SAVED_KEY) || "[]");
       return Array.isArray(v) ? v : [];
@@ -29,16 +32,29 @@
       return [];
     }
   }
-  function write(items) {
+  async function read() {
+    return session.server ? session.api("GET", "/api/saved") : readLocal();
+  }
+  async function remove(id) {
+    if (session.server) {
+      await session.api("DELETE", "/api/saved/" + encodeURIComponent(id));
+      return;
+    }
     try {
-      window.localStorage.setItem(SAVED_KEY, JSON.stringify(items));
+      window.localStorage.setItem(SAVED_KEY, JSON.stringify(readLocal().filter((a) => a.id !== id)));
     } catch (e) {
       /* 저장 공간 오류는 무시 */
     }
   }
 
-  function render() {
-    const items = read();
+  async function render() {
+    let items;
+    try {
+      items = await read();
+    } catch (err) {
+      list.innerHTML = '<div class="banner banner--error">저장한 답변을 불러오지 못했습니다: ' + esc(err.message) + "</div>";
+      return;
+    }
     if (!items.length) {
       list.innerHTML =
         '<div class="results__empty"><p class="results__empty-title">저장한 답변이 없습니다</p>' +
@@ -68,6 +84,7 @@
   // 저장된 답변 HTML 은 이 앱이 만든 것이지만, 인용 버튼만 노트 링크로 바꾸고 나머지 스크립트성 속성은 걷어낸다
   function neutralize(html) {
     const tpl = document.createElement("template");
+    // 저장된 HTML 을 그대로 붙이기 전에 걸러낸다 (서버 모드에서는 다른 경로로 들어온 값일 수도 있다)
     tpl.innerHTML = html || "";
     tpl.content.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
     tpl.content.querySelectorAll("*").forEach((n) => {
@@ -85,16 +102,25 @@
     return tpl.innerHTML;
   }
 
-  list.addEventListener("click", (e) => {
+  list.addEventListener("click", async (e) => {
     const rm = e.target.closest("[data-remove]");
     if (!rm) return;
     if (!window.confirm("이 답변을 삭제할까요?")) return;
-    write(read().filter((a) => a.id !== rm.getAttribute("data-remove")));
+    try {
+      await remove(rm.getAttribute("data-remove"));
+    } catch (err) {
+      window.alert("삭제하지 못했습니다: " + err.message);
+    }
     render();
   });
   window.addEventListener("storage", (e) => {
-    if (e.key === SAVED_KEY) render();
+    if (!session.server && e.key === SAVED_KEY) render();
   });
 
-  render();
+  (window.hanaSession || Promise.resolve(session))
+    .then((s) => {
+      session = s;
+    })
+    .catch(() => {})
+    .then(render);
 })();
