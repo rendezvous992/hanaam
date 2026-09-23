@@ -1,13 +1,24 @@
 #!/usr/bin/env bash
 # 노트 아카이브 서버 설치 스크립트 (AWS EC2: Ubuntu 22.04+/Amazon Linux 2023)
 #
-#   sudo bash deploy/setup.sh                 # 도메인 없이: https://<EC2 공인 IP> (자체 인증서, 첫 접속 때 경고 1회)
-#   sudo bash deploy/setup.sh notes.example.com   # 도메인 있으면: 정식 HTTPS 인증서 자동 발급
+#   sudo bash deploy/setup.sh                    # 도메인 없이: https://<EC2 공인 IP> (자체 인증서, 첫 접속 때 경고 1회)
+#   sudo bash deploy/setup.sh --port 8443        # 443 을 이미 다른 사이트가 쓰고 있을 때: https://<IP>:8443
+#   sudo bash deploy/setup.sh notes.example.com  # 도메인 있으면: 정식 HTTPS 인증서 자동 발급
 #
 # 다시 실행하면 코드만 새로 복사하고 서버를 재시작한다 (데이터는 그대로).
 set -euo pipefail
 
-DOMAIN="${1:-}"
+DOMAIN=""
+HTTPS_PORT=443
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --port) HTTPS_PORT="${2:-}"; shift 2 ;;
+    --port=*) HTTPS_PORT="${1#--port=}"; shift ;;
+    -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
+    -*) echo "알 수 없는 옵션: $1" >&2; exit 1 ;;
+    *) DOMAIN="$1"; shift ;;
+  esac
+done
 APP_DIR=/opt/hana-notes
 DATA_DIR=/var/lib/hana-notes
 APP_USER=hana
@@ -19,6 +30,29 @@ die() { printf '\n\033[1;31m✖ %s\033[0m\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "sudo 로 실행해 주세요:  sudo bash deploy/setup.sh"
 [ -f "$SRC_DIR/server/app.py" ] || die "저장소 폴더 안에서 실행해 주세요 (server/app.py 를 찾지 못했습니다)."
+[[ "$HTTPS_PORT" =~ ^[0-9]+$ ]] && [ "$HTTPS_PORT" -ge 1 ] && [ "$HTTPS_PORT" -le 65535 ] || die "--port 값이 올바르지 않습니다: $HTTPS_PORT"
+[ -z "$DOMAIN" ] || [ "$HTTPS_PORT" = 443 ] || die "도메인을 쓸 때는 443 포트만 됩니다 (인증서 발급에 80·443 이 필요)."
+
+# 이미 이 서버에서 돌고 있는 다른 사이트와 포트가 겹치면 건드리지 않고 멈춘다
+port_owner() {
+  ss -Hltnp "sport = :$1" 2>/dev/null | grep -o 'users:(("[^"]*"' | head -1 | cut -d'"' -f2 || true
+}
+check_port() {
+  local owner
+  owner="$(port_owner "$1")"
+  case "$owner" in
+    ""|caddy) ;;
+    uvicorn|python*) [ "$1" = 8000 ] && systemctl is-active --quiet hana-notes 2>/dev/null || die "$1 번 포트를 이미 '$owner' 프로그램이 쓰고 있습니다." ;;
+    *) die "$1 번 포트를 이미 '$owner' 프로그램이 쓰고 있습니다 (기존 사이트일 수 있습니다).
+   기존 사이트는 그대로 두고 다른 포트로 설치하려면:
+     sudo bash deploy/setup.sh --port 8443" ;;
+  esac
+}
+if command -v ss >/dev/null; then
+  check_port "$HTTPS_PORT"
+  if [ "$HTTPS_PORT" = 443 ]; then check_port 80; fi
+  check_port 8000
+fi
 
 # ---------------------------------------------------------------- 1. 패키지
 say "1/6 필요한 프로그램 설치"
@@ -110,14 +144,28 @@ $DOMAIN {
 EOF
 else
   [ -n "$PUBLIC_IP" ] || die "공인 IP 를 알아내지 못했습니다. EC2 에 공인 IP(또는 탄력적 IP)를 붙이거나 도메인을 인자로 주세요."
-  SITE_URL="https://$PUBLIC_IP"
+  if [ "$HTTPS_PORT" = 443 ]; then
+    PORT_SUFFIX=""
+    GLOBAL_EXTRA=""
+    REDIRECT_BLOCK="http://$PUBLIC_IP {
+	redir https://{host}{uri} permanent
+}"
+  else
+    # 80 번 포트는 기존 사이트 몫으로 남겨 둔다
+    PORT_SUFFIX=":$HTTPS_PORT"
+    GLOBAL_EXTRA="	auto_https disable_redirects
+	http_port 18080"
+    REDIRECT_BLOCK=""
+  fi
+  SITE_URL="https://$PUBLIC_IP$PORT_SUFFIX"
   # 브라우저는 IP 로 접속할 때 SNI 를 보내지 않으므로 default_sni 로 인증서를 고르게 한다
   cat > /etc/caddy/Caddyfile <<EOF
 {
 	default_sni $PUBLIC_IP
+$GLOBAL_EXTRA
 }
 
-https://$PUBLIC_IP${PRIVATE_IP:+, https://$PRIVATE_IP} {
+https://$PUBLIC_IP$PORT_SUFFIX${PRIVATE_IP:+, https://$PRIVATE_IP$PORT_SUFFIX} {
 	tls internal
 	encode gzip
 	request_body {
@@ -126,9 +174,7 @@ https://$PUBLIC_IP${PRIVATE_IP:+, https://$PRIVATE_IP} {
 	reverse_proxy 127.0.0.1:8000
 }
 
-http://$PUBLIC_IP {
-	redir https://{host}{uri} permanent
-}
+$REDIRECT_BLOCK
 EOF
 fi
 /usr/local/bin/caddy fmt --overwrite /etc/caddy/Caddyfile >/dev/null 2>&1 || true
@@ -195,8 +241,9 @@ say "6/6 사용자 확인"
 manage() { (cd "$APP_DIR" && sudo -u "$APP_USER" env HANA_DATA_DIR="$DATA_DIR" "$APP_DIR/venv/bin/python" -m server.manage "$@"); }
 if manage users | grep -q "사용자가 없습니다"; then
   echo "아직 사용자가 없습니다. 관리자 계정을 만듭니다."
-  read -r -p "관리자 아이디 (영문): " ADMIN_ID
-  read -r -p "화면에 보일 이름 (예: 김동휘): " ADMIN_NAME
+  # 파이프로 실행돼도 키보드 입력을 받도록 /dev/tty 에서 읽는다
+  read -r -p "관리자 아이디 (영문): " ADMIN_ID </dev/tty
+  read -r -p "화면에 보일 이름: " ADMIN_NAME </dev/tty
   manage adduser "$ADMIN_ID" --name "${ADMIN_NAME:-$ADMIN_ID}" --admin
 else
   manage users
@@ -212,6 +259,6 @@ $( [ -z "$DOMAIN" ] && echo " (자체 인증서라 첫 접속 때 '안전하지 
  부서원 추가:
    cd $APP_DIR && sudo -u $APP_USER env HANA_DATA_DIR=$DATA_DIR venv/bin/python -m server.manage adduser <아이디> --name <이름>
 
- AWS 보안 그룹에서 인바운드 443(HTTPS)과 80(HTTP) 포트를 열어야 접속됩니다.
+ AWS 보안 그룹에서 인바운드 $HTTPS_PORT(HTTPS)$( [ "$HTTPS_PORT" = 443 ] && echo "과 80(HTTP)" ) 포트를 열어야 접속됩니다.
 ============================================================
 EOF

@@ -63,6 +63,23 @@ cd hanaam
 sudo bash deploy/setup.sh
 ```
 
+같은 서버에서 **이미 다른 사이트가 443 포트를 쓰고 있으면** 설치 스크립트가 멈추고 알려 줍니다.
+기존 사이트는 그대로 두고 다른 포트로 설치하려면 `--port`를 붙이고, 보안 그룹에서 그 포트(예: 8443)를 여세요.
+
+```bash
+sudo bash deploy/setup.sh --port 8443    # 접속: https://<EC2 공인 IP>:8443/notes/
+```
+
+git clone 없이 한 번에 받아서 설치하려면 (업데이트도 같은 명령):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rendezvous992/hanaam/HEAD/deploy/install.sh -o install.sh
+sudo bash install.sh                            # 레포가 Public 일 때
+sudo GITHUB_TOKEN=<토큰> bash install.sh        # 레포가 Private 일 때 (토큰은 3번 참고)
+```
+
+> Private 레포라면 `raw.githubusercontent.com` 주소도 토큰이 필요합니다. 이때는 3번처럼 `git clone` 후 `sudo bash deploy/setup.sh`가 더 간단합니다.
+
 끝나갈 때 **관리자 아이디 · 이름 · 비밀번호**를 물어봅니다. 마지막에 접속 주소가 나옵니다.
 
 ```
