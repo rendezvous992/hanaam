@@ -219,7 +219,8 @@ async def guard(request: Request, call_next):
         if STATIC_ONLY:
             return JSONResponse({"detail": "데이터베이스가 연결되지 않아 서버 기능을 쓸 수 없습니다."}, status_code=503)
         # 다른 사이트에서 보낸 폼·스크립트 요청(CSRF)을 막기 위해 전용 헤더를 요구한다
-        if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("x-hana") != "1":
+        # 텔레그램 웹훅은 텔레그램 서버가 부르므로 전용 헤더 대신 비밀 토큰으로 확인한다
+        if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("x-hana") != "1" and path != "/api/telegram/webhook":
             return JSONResponse({"detail": "잘못된 요청입니다."}, status_code=403)
         user = session_user(request)
         if user is not None and user["must_change"] and path not in _MUST_CHANGE_OK:
@@ -1114,7 +1115,7 @@ integrations.register(app, require_user, has_feature, connect)
 # --- 화면과 정적 파일 ------------------------------------------------------------------
 
 PAGE_DIRS = {"notes", "calendar", "ndr", "events", "morning", "ops", "portfolio", "company", "research", "settings", "admin", "home",
-             "static", "requests", "market", "account", "workload", "stats"}
+             "static", "requests", "market", "account", "workload", "stats", "telegram"}
 ASSET_TYPES = {".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon"}
 PUBLIC_PAGES = {"login": "login.html", "signup": "signup.html"}
 

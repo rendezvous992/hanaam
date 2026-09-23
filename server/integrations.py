@@ -10,6 +10,7 @@ AI 리서치는 저장된 노트 검색 결과만 돌려준다.
   CRON_SECRET         예약 리서치를 깨우는 주기 호출(Vercel Cron) 확인용
   XAI_API_KEY         노트 요약(Grok). 있으면 요약은 Grok 으로, 없으면 Claude 로 한다
   XAI_MODEL           (선택) Grok 모델 이름, 기본 grok-4
+  TELEGRAM_BOT_TOKEN  텔레그램 수집 봇 (@BotFather 에서 무료 발급). 봇이 들어간 방의 메시지를 사이트에 모은다
 """
 
 from __future__ import annotations
@@ -1028,6 +1029,61 @@ def auto_sectors(conn_factory, names: list[str], budget_s: float = 90) -> dict[s
 
 
 # ---------------------------------------------------------------------------
+# 텔레그램 수집 — 봇이 들어간 방(채널·그룹)의 메시지를 받아 모은다 (웹훅)
+# ---------------------------------------------------------------------------
+
+import hashlib as _hashlib
+
+
+def tg_secret() -> str:
+    return _hashlib.sha256(("hana-telegram:" + _env("TELEGRAM_BOT_TOKEN")).encode()).hexdigest()[:48]
+
+
+def tg_api(method: str, params: Optional[dict[str, Any]] = None) -> Any:
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{_env('TELEGRAM_BOT_TOKEN')}/{method}",
+        data=json.dumps(params or {}).encode(), method="POST", headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as res:  # noqa: S310 (텔레그램 고정 주소)
+            return json.loads(res.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode("utf-8"))
+        except ValueError:
+            return {"ok": False, "description": f"HTTP {e.code}"}
+
+
+def tg_record(update: dict[str, Any]) -> Optional[dict[str, Any]]:
+    msg = update.get("channel_post") or update.get("message") or update.get("edited_channel_post") or update.get("edited_message")
+    if not isinstance(msg, dict):
+        return None
+    text = str(msg.get("text") or msg.get("caption") or "").strip()
+    if not text:
+        return None
+    chat = msg.get("chat") or {}
+    sender = msg.get("from") or {}
+    fwd = msg.get("forward_origin") or {}
+    fwd_name = ((fwd.get("chat") or {}).get("title") or (fwd.get("sender_user") or {}).get("first_name") or fwd.get("sender_user_name") or "")
+    when = datetime.fromtimestamp(int(msg.get("date") or time.time()), tz=KST)
+    username = chat.get("username") or ""
+    mid = msg.get("message_id")
+    urls = []
+    for ent in (msg.get("entities") or msg.get("caption_entities") or []):
+        if ent.get("type") == "text_link" and ent.get("url"):
+            urls.append(ent["url"])
+        elif ent.get("type") == "url":
+            urls.append(text[ent.get("offset", 0): ent.get("offset", 0) + ent.get("length", 0)])
+    return {
+        "id": re.sub(r"[^0-9A-Za-z_]", "_", f"{chat.get('id')}_{mid}")[:64],
+        "chatId": chat.get("id"), "chat": chat.get("title") or chat.get("first_name") or username or "개인 대화",
+        "chatType": chat.get("type") or "", "sender": sender.get("first_name") or sender.get("username") or "", "forwardFrom": fwd_name,
+        "text": text[:20000], "urls": urls[:20], "date": when.strftime("%Y-%m-%d"), "time": when.strftime("%H:%M"), "at": when.isoformat(),
+        "link": f"https://t.me/{username}/{mid}" if username and mid else "", "edited": bool(update.get("edited_channel_post") or update.get("edited_message")),
+    }
+
+
+# ---------------------------------------------------------------------------
 # 경제지표 (EODHD)
 # ---------------------------------------------------------------------------
 
@@ -1412,6 +1468,58 @@ def register(app: FastAPI, require_user, has_feature, connect) -> None:
         import anyio
 
         return {"sectors": await anyio.to_thread.run_sync(lambda: auto_sectors(connect, names))}
+
+    # --- 텔레그램 수집 -------------------------------------------------------
+
+    @app.post("/api/telegram/webhook")
+    async def api_tg_webhook(request: Request) -> Any:
+        """텔레그램이 보내는 새 메시지 (로그인 없이 비밀 헤더로 확인)."""
+        if not _env("TELEGRAM_BOT_TOKEN") or request.headers.get("x-telegram-bot-api-secret-token") != tg_secret():
+            raise HTTPException(401, "권한이 없습니다.")
+        try:
+            update = await request.json()
+        except ValueError:
+            return {"ok": True}
+        rec = tg_record(update if isinstance(update, dict) else {})
+        if rec:
+            rid = rec.pop("id")
+            with connect() as conn:
+                row = conn.one("SELECT id FROM records WHERE collection = 'telegram' AND id = ?", (rid,))
+                data = json.dumps({**rec, "id": rid}, ensure_ascii=False)
+                if row is None:
+                    conn.execute("INSERT INTO records(collection, id, data, created_at) VALUES ('telegram', ?, ?, ?)", (rid, data, now_iso()))
+                else:
+                    conn.execute("UPDATE records SET data = ?, updated_at = ? WHERE collection = 'telegram' AND id = ?", (data, now_iso(), rid))
+        return {"ok": True}
+
+    @app.get("/api/telegram/status")
+    def api_tg_status(request: Request) -> Any:
+        require_user(request)
+        if not _env("TELEGRAM_BOT_TOKEN"):
+            return {"connected": False}
+        try:
+            me = cached("tg:me", 3600, lambda: tg_api("getMe"))
+            info = tg_api("getWebhookInfo")
+        except (urllib.error.URLError, TimeoutError) as e:
+            return {"connected": True, "error": f"텔레그램에 연결하지 못했습니다. ({type(e).__name__})"}
+        res = (info or {}).get("result") or {}
+        return {"connected": True, "bot": ((me or {}).get("result") or {}).get("username", ""), "ok": (me or {}).get("ok", False),
+                "webhook": res.get("url", ""), "pending": res.get("pending_update_count", 0), "lastError": res.get("last_error_message", "")}
+
+    @app.post("/api/telegram/setup")
+    def api_tg_setup(request: Request) -> Any:
+        """관리자: 이 사이트 주소로 웹훅을 건다."""
+        user = require_user(request)
+        if user["role"] not in ("super", "admin"):
+            raise HTTPException(403, "관리자만 연결할 수 있습니다.")
+        if not _env("TELEGRAM_BOT_TOKEN"):
+            return not_connected("텔레그램 봇", "TELEGRAM_BOT_TOKEN")
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+        url = f"https://{host}/api/telegram/webhook"
+        out = tg_api("setWebhook", {"url": url, "secret_token": tg_secret(), "allowed_updates": ["message", "channel_post", "edited_message", "edited_channel_post"]})
+        if not out.get("ok"):
+            raise HTTPException(400, "텔레그램이 거절했습니다: " + str(out.get("description") or "알 수 없는 오류"))
+        return {"ok": True, "url": url}
 
     # --- 경제지표 -----------------------------------------------------------
 

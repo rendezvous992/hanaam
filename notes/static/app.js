@@ -2701,5 +2701,33 @@
     render();
     openFromHash();
     autoAssignSectors(false);
+    // 다른 화면(텔레그램 수집 등)에서 보낸 초안으로 등록 창 열기
+    if (new URLSearchParams(location.search).get("draft") === "1") {
+      let draft = null;
+      try {
+        draft = JSON.parse(sessionStorage.getItem("hana.noteDraft") || "null");
+        sessionStorage.removeItem("hana.noteDraft");
+      } catch (e) {
+        draft = null;
+      }
+      history.replaceState(null, "", location.pathname);
+      if (draft) {
+        openEditor(null);
+        const form = $("#note-form");
+        if (form) {
+          const found = detectCompany((draft.title || "") + "\n" + (draft.body || ""));
+          if (found) {
+            form.elements.company.value = found.company;
+            form.elements.ticker.value = found.ticker;
+          }
+          form.elements.title.value = draft.title || "";
+          form.elements.body.value = draft.body || "";
+          if (draft.link) form.elements.link.value = draft.link;
+          if (draft.date) form.elements.date.value = draft.date;
+          const aiBtn = form.querySelector('[data-act="ai-body"]');
+          if (aiBtn) aiBtn.hidden = form.elements.body.value.trim().length < 30;
+        }
+      }
+    }
   })();
 })();

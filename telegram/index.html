@@ -3,16 +3,15 @@
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <meta content="light" name="color-scheme"/>
 <meta content="#00857b" name="theme-color"/>
-<title>시장</title>
+<title>텔레그램 수집 · 업무공간</title>
 <link href="/static/app-icon.svg" rel="icon" type="image/svg+xml"/>
 
 <link href="/static/shell.css" rel="stylesheet"/>
-<link href="/static/dash.css" rel="stylesheet"/>
-<link href="/market/static/market.css" rel="stylesheet"/>
+<link href="/telegram/static/styles.css" rel="stylesheet"/>
 <link href="/static/tenant.css" rel="stylesheet"/>
 <script>try{if(localStorage.getItem("hana.sidebar")==="collapsed")document.documentElement.setAttribute("data-hana-sidebar","collapsed")}catch(e){}</script></head>
 <body class="hana-workspace">
-<a class="hana-skip-link" href="/market/#hana-main">본문으로 바로가기</a>
+<a class="hana-skip-link" href="/settings/#hana-main">본문으로 바로가기</a>
 <div class="hana-shell">
 <aside aria-hidden="false" aria-label="업무 메뉴" class="hana-sidebar" id="hana-navigation">
 <nav aria-label="주요 메뉴" class="hana-nav">
@@ -71,12 +70,12 @@
 </svg><span>개선요청</span>
 </a>
 <p class="hana-nav-label">INSIGHTS <span>시장 · 분석</span></p>
-<a aria-current="page" class="hana-nav-link is-active" href="/market/">
+<a class="hana-nav-link" href="/market/">
 <svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
 </svg><span>시장</span>
 </a>
-<a class="hana-nav-link" href="/telegram/">텔레그램</a>
+<a aria-current="page" class="hana-nav-link is-active" href="/telegram/">텔레그램</a>
 <a class="hana-nav-link" href="/portfolio/">
 <svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="M3 20h18M6 16v-4m6 4V5m6 11V9"></path><path d="m4 8 5-4 5 2 6-4"></path>
@@ -126,135 +125,29 @@
 <button aria-controls="hana-navigation" aria-expanded="true" aria-label="메뉴 접기" class="hana-menu-toggle" data-hana-toggle="" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="M4 6h16M4 12h16M4 18h16"></path>
 </svg></button>
-<span class="hana-breadcrumb"><strong>시장</strong></span>
+<span class="hana-breadcrumb"><strong>텔레그램 수집</strong></span>
 </div>
-<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:31:03.324Z">2026. 09. 23. (수) 15:31 KST</time><a href="/account/">사용자</a></div>
+<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:23:07.335Z">2026. 09. 23. (수) 15:23 KST</time><a href="/account/">사용자</a></div>
 </header>
 <main class="site-main" id="hana-main" tabindex="-1">
-<section aria-label="주요 지수 · 환율" class="market market--naver">
-<div class="market__inner">
-<ul class="market__list" id="market-list">
-<li class="market__item" data-delayed="false" data-direction="flat" data-key="KOSPI">
-<span class="market__info">
-<span class="market__name">KOSPI</span>
-<span class="market__row">
-<span class="market__value" data-role="value">—</span>
-<span class="market__change" data-role="change"></span>
-</span>
-<span class="market__time" data-role="time">시세 미연결</span>
-</span>
-<span class="market__spark" data-role="spark"></span>
-</li>
-<li class="market__item" data-delayed="false" data-direction="flat" data-key="KOSDAQ">
-<span class="market__info">
-<span class="market__name">KOSDAQ</span>
-<span class="market__row">
-<span class="market__value" data-role="value">—</span>
-<span class="market__change" data-role="change"></span>
-</span>
-<span class="market__time" data-role="time">시세 미연결</span>
-</span>
-<span class="market__spark" data-role="spark"></span>
-</li>
-<li class="market__item" data-delayed="false" data-direction="flat" data-key="KPI200">
-<span class="market__info">
-<span class="market__name">KOSPI 200</span>
-<span class="market__row">
-<span class="market__value" data-role="value">—</span>
-<span class="market__change" data-role="change"></span>
-</span>
-<span class="market__time" data-role="time">시세 미연결</span>
-</span>
-<span class="market__spark" data-role="spark"></span>
-</li>
-</ul>
-<p class="market__hint" id="market-hint">시세 제공 시각은 한국시간(KST) · 30초 간격 확인</p>
-</div>
-</section>
-<div class="page mkt" data-root="../" id="mkt">
-<div class="mkt__grid">
-<div class="mkt__main">
-<article aria-labelledby="indicator-heading" class="card market-indicators">
-<header class="card__head"><h2 class="card__title" id="indicator-heading">해외 지수 · 금리 · 원자재</h2></header>
-<div class="indicator-grid" id="indicator-grid"></div>
-<p class="mv__source" id="indicator-source"></p>
-</article>
-<article class="card movers" data-provider="naver" id="movers">
-<header class="card__head">
-<h2 class="card__title">관심 종목 시세</h2>
-<span class="card__meta" id="mv-stamp"></span>
+<div class="page tg" id="tg-root">
+<header class="tg-head">
+<div><h1>텔레그램 수집</h1><p>봇을 넣어 둔 텔레그램 방(채널·그룹)의 메시지가 자동으로 모입니다. GPT 요약 알림, 증권사 리포트 채널 등을 한곳에서 봅니다.</p></div>
 </header>
-<div id="mv-sectors"></div>
-<div aria-label="시장 선택" class="mv__markets segmented" id="mv-markets" role="tablist">
-<button aria-selected="true" class="segmented__btn is-active" data-market="all" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
-<path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
-</svg>전체</button>
-<button aria-selected="false" class="segmented__btn" data-market="KOSPI" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
-<path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
-</svg>코스피</button>
-<button aria-selected="false" class="segmented__btn" data-market="KOSDAQ" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
-<path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
-</svg>코스닥</button>
+<section class="tg-status" id="tg-status">연결 상태를 확인하는 중…</section>
+<div class="tg-toolbar">
+<input class="input input--compact" id="tg-q" type="search" placeholder="내용·방 이름 검색">
+<select class="input input--compact" id="tg-chat"><option value="">모든 방</option></select>
+<select class="input input--compact" id="tg-range"><option value="7">최근 7일</option><option value="30" selected>최근 30일</option><option value="90">최근 90일</option><option value="all">전체</option></select>
+<span class="tg-count" id="tg-count"></span>
 </div>
-<div aria-label="목록 선택" class="segmented mv__tabs" id="mv-tabs" role="tablist">
-<button aria-selected="true" class="segmented__btn is-active" data-list="order" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
-<path d="M4 20h17M7 16v-5m5 5V4m5 12V8"></path>
-</svg>등록순</button>
-<button aria-selected="false" class="segmented__btn" data-list="gainers" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
-<path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
-</svg>상승</button>
-<button aria-selected="false" class="segmented__btn" data-list="losers" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
-<path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
-</svg>하락</button>
-<button aria-selected="false" class="segmented__btn" data-list="memo" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
-<path d="M14 3H5v18h14V8Zm0 0v5h5M8 12h8m-8 4h6"></path>
-</svg>메모</button>
+<div class="tg-list" id="tg-list"></div>
 </div>
-<div aria-label="국내 종목 시세 표" class="mv__quote-scroll" id="mv-body" role="region" tabindex="0"><table class="mv__table mv__quotes"><thead><tr><th scope="col">종목</th><th scope="col">현재가(원)</th><th scope="col">전일비(원)</th><th scope="col">등락률</th><th scope="col">장 상태 · 시각(KST)</th><th scope="col">메모</th><th scope="col">관리</th></tr></thead><tbody></tbody></table></div>
-<p aria-live="polite" class="mv__note" data-stale="0" id="mv-note"></p>
-<p class="mv__source" id="mv-source">관심 종목은 모든 사용자가 함께 씁니다 · 화면을 보는 동안 30초마다 확인</p>
-</article>
-<article class="card brief" id="brief">
-<header class="card__head">
-<h2 class="card__title">시황</h2>
-</header>
-<div class="brief__switch">
-<div aria-label="시황 종류" class="brief__tabs" id="brief-tabs" role="tablist">
-<button aria-controls="brief-body" aria-selected="true" class="brief__tab is-active" data-session="morning" role="tab" type="button">국내 모닝</button>
-<button aria-controls="brief-body" aria-selected="false" class="brief__tab" data-session="global" role="tab" type="button">글로벌 마감</button>
-</div>
-<span class="card__meta" id="brief-meta"></span>
-</div>
-<p class="brief__headline is-empty" id="brief-headline">아직 생성된 시황이 없습니다.</p>
-<div class="brief__body" id="brief-body"></div>
-</article>
-</div>
-<div class="mkt__side">
-<article class="card news news--naver" id="news">
-<header class="card__head">
-<h2 class="card__title">뉴스</h2>
-<span class="card__meta" id="news-meta"></span>
-<div class="news__nav">
-<button aria-controls="news-list" aria-label="이전 뉴스" class="news__btn" id="news-prev" type="button">‹</button>
-<span class="news__index" id="news-index"></span>
-<button aria-controls="news-list" aria-label="다음 뉴스" class="news__btn" id="news-next" type="button">›</button>
-</div>
-</header>
-<div aria-label="뉴스 섹터" class="news__tabs" id="news-tabs" role="tablist">
-<button aria-controls="news-list" aria-selected="true" class="news__tab is-active" data-sector="all" role="tab" type="button">전체</button>
-<button aria-controls="news-list" aria-selected="false" class="news__tab" data-sector="kr" role="tab" type="button">국내 증시</button>
-<button aria-controls="news-list" aria-selected="false" class="news__tab" data-sector="global" role="tab" type="button">해외 증시</button>
-</div>
-<ul class="news__list" data-page-size="5" id="news-list"></ul>
-<p class="mv__source" id="news-source">뉴스 자동 수집은 아직 연결되지 않았습니다 · 읽을 기사 링크를 직접 남겨 함께 봅니다</p>
-</article>
-</div>
-</div>
-</div>
+
 </main>
 </div>
 </div>
 <script src="/static/shell.js"></script>
 <script src="/static/kit.js"></script>
-<script src="/market/static/app.js"></script>
+<script src="/telegram/static/app.js"></script>
 </body></html>

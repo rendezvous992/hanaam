@@ -551,6 +551,7 @@
       '<a class="btn btn--ghost btn--sm" href="/notes/?company=' + encodeURIComponent(c.name) + '">노트 페이지에서 보기</a>' +
       '<a class="btn btn--ghost btn--sm" href="/calendar/?company=' + encodeURIComponent(c.name) + '">IR 캘린더</a>' +
       '<a class="btn btn--ghost btn--sm" href="/market/">시장</a>' +
+      '<button type="button" class="btn btn--ghost btn--sm" data-gpt-analyze title="이 기업의 노트·IR 일정을 묶은 분석 요청을 복사하고 챗GPT를 엽니다 (키 필요 없음)">챗GPT로 기업 분석</button>' +
       "</div></div>" +
       '<div class="cpanel__sec"><div class="cpanel__bar"><h4>IR 일정 <span class="cnotes__count">' + ce.length + "건</span></h4>" +
       '<a class="cq__more" href="/calendar/?company=' + encodeURIComponent(c.name) + '">IR 캘린더에서 보기 →</a></div>' +
@@ -661,6 +662,10 @@
       renderNotes(coNotes(current));
       return;
     }
+    if (e.target.closest("[data-gpt-analyze]")) {
+      gptAnalyze(current);
+      return;
+    }
     const wb = e.target.closest("[data-watch]");
     if (wb) {
       wb.disabled = true;
@@ -701,6 +706,39 @@
       K.toast(err.message, true);
     }
   });
+
+  // 챗GPT 기업 분석: 우리 자료(노트·IR 일정·섹터)를 묶은 요청을 복사하고 챗GPT 를 연다 (키·요금 없음)
+  async function gptAnalyze(c) {
+    const cn = coNotes(c).slice(0, 12);
+    const ce = coEvents(c).sort(K.byEventTime).slice(-10);
+    const lines = [
+      c.name + (c.code ? " (" + c.code + ")" : "") + " 기업 분석을 해줘. 자산운용사 펀드매니저가 보는 형식으로, 한국어로.",
+      "구성: 1) 사업 개요와 최근 이슈 2) 실적·밸류에이션 포인트(최신 공시·실적을 검색해서 기준 시점 표기) 3) 우리 팀 미팅 노트에서 나온 핵심 4) 투자 포인트와 리스크 5) 앞으로 확인할 일정.",
+      "아래 우리 팀 자료를 근거로 쓰고, 자료에 없는 내용은 출처를 밝혀 줘.",
+      "",
+      "[섹터] " + (noteSector(c.name) || "미지정"),
+    ];
+    if (ce.length) {
+      lines.push("", "[IR 일정]");
+      ce.forEach((ev) => lines.push("- " + ev.date + " " + (K.IR_LABEL[ev.type] || "") + " " + (ev.title || "") + (ev.brokers ? " / " + ev.brokers : "")));
+    }
+    if (cn.length) {
+      lines.push("", "[우리 팀 노트 " + cn.length + "건]");
+      cn.forEach((n) => {
+        const body = String(n.body || "").replace(/\s+/g, " ").trim();
+        lines.push("- " + n.date + " " + n.title + (n.author ? " (" + n.author + ")" : "") + (body ? ": " + body.slice(0, 700) + (body.length > 700 ? "…" : "") : ""));
+      });
+    }
+    const text = lines.join("\n");
+    let copied = true;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      copied = false;
+    }
+    window.open(text.length < 1800 ? "https://chatgpt.com/?q=" + encodeURIComponent(text) : "https://chatgpt.com/", "_blank", "noopener");
+    K.toast(copied ? "분석 요청(노트 " + cn.length + "건·IR " + ce.length + "건 포함)을 복사했습니다. 챗GPT 입력창에 붙여 넣기(Ctrl+V) 후 보내세요." : "챗GPT를 열었습니다. 복사가 막혀 있어 직접 내용을 붙여 넣어 주세요.", !copied);
+  }
 
   /* ---------- 주소(?q= / ?code=) ---------- */
   function route() {
