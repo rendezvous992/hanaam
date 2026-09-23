@@ -954,3 +954,5 @@
 .rec-script__hint { margin: 6px 0px 0px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 
 .detail-audio-note .btn { margin-left: 6px; vertical-align: middle; }
+
+.rec-script__lang { width: auto; min-width: 92px; padding: 4px 8px; font-size: 12px; }

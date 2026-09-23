@@ -76,13 +76,25 @@ def _guess_mime(filename: str, mime: str) -> str:
     return mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
 
-def _safe_name(filename: str) -> str:
+# 받아쓰기 서버가 받아 주는 확장자 (OpenAI·Groq 공통)
+ALLOWED_EXT = ("mp3", "mp4", "m4a", "wav", "webm", "ogg", "oga", "flac", "mpeg", "mpga")
+# 확장자가 없거나 낯설 때 mime 으로 고른다
+MIME_EXT = [("audio/mpeg", "mp3"), ("audio/mp3", "mp3"), ("audio/mp4", "m4a"), ("audio/aac", "m4a"), ("audio/x-m4a", "m4a"),
+            ("video/mp4", "mp4"), ("audio/wav", "wav"), ("audio/x-wav", "wav"), ("audio/flac", "flac"),
+            ("audio/ogg", "ogg"), ("audio/opus", "ogg"), ("audio/webm", "webm"), ("video/webm", "webm")]
+
+
+def _safe_name(filename: str, mime: str = "") -> str:
     """서버가 확장자로 형식을 가리므로 확장자는 남기고 나머지는 ASCII 로 바꾼다."""
     name = (filename or "audio.webm").replace("\\", "/").split("/")[-1]
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-    if ext not in ("mp3", "mp4", "m4a", "wav", "webm", "ogg", "oga", "flac", "mpeg", "mpga"):
-        ext = "webm"
-    return "audio." + ext
+    if ext in ALLOWED_EXT:
+        return "audio." + ext
+    base = (mime or "").split(";")[0].strip().lower()
+    for m, e in MIME_EXT:
+        if base == m:
+            return "audio." + e
+    return "audio.webm"
 
 
 def _multipart(fields: dict[str, str], filename: str, mime: str, data: bytes) -> tuple[bytes, str]:
@@ -115,7 +127,7 @@ def transcribe_audio(data: bytes, filename: str = "audio.webm", mime: str = "", 
             f"녹음이 너무 큽니다 ({len(data) // 1024 // 1024}MB). 받아쓰기는 {MAX_AUDIO_BYTES // 1024 // 1024}MB 까지만 됩니다. "
             "녹음 화면의 실시간 받아쓰기를 쓰거나 파일을 나눠 올려 주세요."
         )
-    name = _safe_name(filename)
+    name = _safe_name(filename, mime)
     body, content_type = _multipart(
         {
             "model": cfg["model"],

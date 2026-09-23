@@ -1,9 +1,13 @@
-/* 기업 노트 아카이브 — 브라우저 전용 구현
+/* 기업 노트 아카이브
  *
- * 원본 서비스는 서버(API·DB·AI)가 동작을 맡지만, 이 복제본은 정적 파일만으로 돌아간다.
+ * 서버 모드(DB 연결): 노트·녹음·첨부를 /api/* 로 서버에 저장해 부서원이 함께 본다.
+ *   "노트에게 물어보기"·요약·받아쓰기는 서버의 AI 키를 쓴다.
+ * 브라우저 저장 모드(서버·DB 없이 파일만 열었을 때):
  *  - 노트 목록: localStorage("hana.notes.v1")
  *  - 녹음·첨부 파일: IndexedDB("hana-notes" / "files")
  *  - "노트에게 물어보기": AI 대신 키워드 검색으로 관련 노트를 모아 보여준다
+ * 녹음 받아쓰기는 두 모드 모두 크롬 Web Speech API 로 실시간 동작하고,
+ * 서버 모드 + 받아쓰기 키가 있으면 올려 둔 녹음 파일도 글로 옮길 수 있다.
  */
 (function () {
   "use strict";
@@ -1789,6 +1793,17 @@
    * ================================================================ */
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
 
+  // 받아쓰기 언어 — 외국 IR·컨콜은 영어로 바꿔 쓴다 (고른 값은 이 브라우저에 기억한다)
+  const DICT_LANGS = [["ko-KR", "한국어"], ["en-US", "English"]];
+  function dictLang(next) {
+    try {
+      if (next) window.localStorage.setItem("hana.dict.lang", next);
+      return window.localStorage.getItem("hana.dict.lang") || "ko-KR";
+    } catch (e) {
+      return next || "ko-KR";
+    }
+  }
+
   function createDictation(onText) {
     if (!SpeechRec) return null;
     let rec = null;
@@ -1801,7 +1816,7 @@
     }
     function make() {
       const r = new SpeechRec();
-      r.lang = "ko-KR";
+      r.lang = dictLang();
       r.continuous = true;
       r.interimResults = true;
       r.maxAlternatives = 1;
@@ -1833,8 +1848,16 @@
       };
       return r;
     }
-    return {
+    const api = {
       supported: true,
+      // 언어를 바꾸면 인식기를 새로 만든다 (돌고 있었으면 이어서 다시 켠다)
+      setLang(v) {
+        dictLang(v);
+        const running = want;
+        api.stop();
+        rec = null;
+        if (running) api.start();
+      },
       start() {
         want = true;
         lastError = "";
@@ -1883,6 +1906,11 @@
       '<div class="rec-actions" data-rec-actions hidden><button type="button" class="btn btn--ghost btn--sm" data-act="reset">다시 녹음</button></div>' +
       '<div class="rec-script" data-script-wrap>' +
       '<div class="rec-script__head"><span class="rec-script__label">받아쓰기</span>' +
+      (SpeechRec
+        ? '<select class="input input--compact rec-script__lang" data-script-lang aria-label="받아쓰기 언어">' +
+          DICT_LANGS.map((l) => '<option value="' + l[0] + '"' + (l[0] === dictLang() ? " selected" : "") + ">" + esc(l[1]) + "</option>").join("") +
+          "</select>"
+        : "") +
       '<span class="rec-script__state" data-script-state></span>' +
       '<span class="rec-script__actions">' +
       '<button type="button" class="btn btn--ghost btn--sm" data-act="script-sum" hidden>✦ 요약해 본문으로</button>' +
@@ -1932,6 +1960,9 @@
       beforeClose() {
         if (recorder && recorder.state !== "inactive") return window.confirm("녹음 중입니다. 녹음을 버리고 닫을까요?");
         if (result) return window.confirm("저장하지 않은 녹음이 있습니다. 버리고 닫을까요?");
+        // 녹음 없이 받아쓴 글만 있어도 잃지 않게 물어본다
+        const script = $("[data-script]", ctx && ctx.modal ? ctx.modal : document);
+        if (script && script.value.trim()) return window.confirm("받아쓴 글이 저장되지 않았습니다. 버리고 닫을까요?");
         return true;
       },
       onClose() {
@@ -1983,6 +2014,14 @@
       scriptSum.hidden = len < 30;
     }
     scriptBox.addEventListener("input", showScriptButtons);
+    const scriptLang = $("[data-script-lang]", m);
+    if (scriptLang) {
+      scriptLang.addEventListener("change", () => {
+        if (dict) dict.setLang(scriptLang.value);
+        else dictLang(scriptLang.value);
+        toast(scriptLang.options[scriptLang.selectedIndex].text + "로 받아씁니다.");
+      });
+    }
 
     function warn(text) {
       warning.hidden = !text;
@@ -2887,23 +2926,27 @@
       store = serverStore(session.api);
       serverApi = session.api;
       CURRENT_USER = session.me.displayName || session.me.username;
-      aiWhy = "내 계정에 'AI 리서치' 권한이 없습니다. 계정 관리자에게 권한을 요청하세요.";
-      if ((session.me.permissions || []).includes("ai_research")) {
-        aiWhy = "AI 연결 상태를 확인하는 중입니다. 잠시 뒤 다시 눌러 주세요.";
-        session.api("GET", "/api/integrations").then((st) => {
-          aiWhy = st && st.summary ? "" : "관리자가 Vercel 환경변수에 XAI_API_KEY(Grok 키)를 넣고 Redeploy 해야 합니다.";
-          aiReady = !!(st && st.ai);
-          sumReady = !!(st && st.summary);
-          if (st && st.summaryProvider) sumName = st.summaryProvider;
-          sttReady = !!(st && st.stt);
-          if (st && st.sttProvider) sttName = st.sttProvider;
-          if (st && st.sttMaxMb) sttMaxMb = st.sttMaxMb;
-          if (aiReady) {
-            const inp = $("#ask-input");
-            if (inp) inp.placeholder = "노트에게 물어보기 — AI 가 노트를 읽고 답합니다. 예: 최근 태양광 관련해서 나온 얘기 있어?";
-          }
-        }).catch(() => {});
-      }
+      // 연결 상태는 권한과 상관없이 확인한다 — 권한이 없는 사람에게도 '왜 안 되는지'를 정확히 알려 주기 위해
+      const mayAI = (session.me.permissions || []).includes("ai_research");
+      aiWhy = mayAI ? "AI 연결 상태를 확인하는 중입니다. 잠시 뒤 다시 눌러 주세요." : "내 계정에 'AI 리서치' 권한이 없습니다. 계정 관리자에게 권한을 요청하세요.";
+      session.api("GET", "/api/integrations").then((st) => {
+        const keyed = !!(st && st.summary);
+        aiWhy = !mayAI
+          ? "내 계정에 'AI 리서치' 권한이 없습니다. 계정 관리자에게 권한을 요청하세요."
+          : keyed
+            ? ""
+            : "관리자가 Vercel 환경변수에 XAI_API_KEY(Grok 키)를 넣고 Redeploy 해야 합니다.";
+        aiReady = mayAI && !!(st && st.ai);
+        sumReady = mayAI && keyed;
+        if (st && st.summaryProvider) sumName = st.summaryProvider;
+        sttReady = mayAI && !!(st && st.stt);
+        if (st && st.sttProvider) sttName = st.sttProvider;
+        if (st && st.sttMaxMb) sttMaxMb = st.sttMaxMb;
+        if (aiReady) {
+          const inp = $("#ask-input");
+          if (inp) inp.placeholder = "노트에게 물어보기 — AI 가 노트를 읽고 답합니다. 예: 최근 태양광 관련해서 나온 얘기 있어?";
+        }
+      }).catch(() => {});
       // 서버 목록을 받기 전까지 원본 화면에 박혀 있던 예시 노트가 보이지 않게 한다
       el.noteList.innerHTML = "";
     }
