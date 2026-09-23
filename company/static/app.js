@@ -508,6 +508,13 @@
     return watchlist.find((w) => (c.code && w.code === c.code) || norm(w.name) === norm(c.name));
   }
 
+  // 노트 화면에서 정한 종목 → 섹터 (모음 company-sectors)
+  const sectorStore = K.collection("company-sectors");
+  const SECTOR_LIST = ["반도체", "2차전지", "자동차", "IT·인터넷", "게임·엔터", "바이오·헬스케어", "조선·기계", "방산·우주", "화학·에너지", "철강·소재",
+    "건설·부동산", "금융", "소비재·유통", "통신·미디어", "운송·물류", "기타"];
+  let sectorRows = [];
+  const noteSector = (name) => (sectorRows.find((r) => r.company === name) || {}).sector || "";
+
   function renderCompany() {
     const c = current;
     setView(true);
@@ -534,7 +541,11 @@
       '<div id="cq-price"><span class="cq__price">—</span></div></div>' +
       '<div class="cq__facts" id="cq-facts"><span><i>시세</i>불러오는 중…</span></div>' +
       '<div class="cq__metrics">' + metrics.map(([k, v]) => "<div class=\"cq__metric\"><i>" + esc(k) + "</i><b>" + esc(v) + "</b></div>").join("") + "</div>" +
-      '<p class="cq__foot">' + esc(foot) + (c.sector ? " · 섹터 " + esc(c.sector) : "") + "</p>" +
+      '<p class="cq__foot">' + esc(foot) + (c.sector ? " · 표의 섹터 " + esc(c.sector) : "") + "</p>" +
+      '<label class="cq__sector">섹터 <select class="input input--compact" data-sector>' +
+      ['<option value="">미지정</option>'].concat(SECTOR_LIST.concat(noteSector(c.name) && !SECTOR_LIST.includes(noteSector(c.name)) ? [noteSector(c.name)] : [])
+        .map((x) => '<option value="' + esc(x) + '"' + (x === noteSector(c.name) ? " selected" : "") + ">" + esc(x) + "</option>")).join("") +
+      '</select><span>노트 화면의 섹터 체크와 같은 값입니다</span></label>' +
       '<div class="cq__actions">' +
       '<button type="button" class="btn btn--sm ' + (w ? "btn--ghost" : "btn--primary") + '" data-watch>' + (w ? "관심 종목에서 빼기" : "+ 관심 종목") + "</button>" +
       '<a class="btn btn--ghost btn--sm" href="/notes/?company=' + encodeURIComponent(c.name) + '">노트 페이지에서 보기</a>' +
@@ -674,6 +685,23 @@
     }
   });
 
+  pageEl.addEventListener("change", async (e) => {
+    const sel = e.target.closest("[data-sector]");
+    if (!sel || !current) return;
+    const name = current.name;
+    const v = sel.value;
+    const cur = sectorRows.find((r) => r.company === name);
+    try {
+      if (cur && !v) await sectorStore.remove(cur.id);
+      else if (cur) await sectorStore.update(cur.id, { company: name, sector: v });
+      else if (v) await sectorStore.create({ company: name, sector: v });
+      sectorRows = sectorStore.cached();
+      K.toast(v ? name + " 섹터를 '" + v + "'(으)로 정했습니다." : "섹터를 지웠습니다.");
+    } catch (err) {
+      K.toast(err.message, true);
+    }
+  });
+
   /* ---------- 주소(?q= / ?code=) ---------- */
   function route() {
     const p = new URLSearchParams(location.search);
@@ -701,6 +729,7 @@
     events = Array.isArray(ev) ? ev : [];
     watchlist = Array.isArray(wl) ? wl : [];
     uniMeta = (uni || []).find((x) => Array.isArray(x.rows)) || null;
+    sectorRows = await sectorStore.list().catch(() => []);
     buildIndex();
     route();
   })();

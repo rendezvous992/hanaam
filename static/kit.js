@@ -539,6 +539,85 @@
     return (a.date || "").localeCompare(b.date || "") || (a.time || "99").localeCompare(b.time || "99") || (a.companies || "").localeCompare(b.companies || "", "ko");
   }
 
+  /* ---------- 마크다운 (AI 답변 표시용, HTML 은 모두 이스케이프). [노트 N] 은 refs 의 N번째 노트 버튼 ---------- */
+  function inline(text, refs) {
+    let s = esc(text);
+    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, url) => '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + "</a>");
+    s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m, pre, url) => pre + '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + "</a>");
+    // [노트 3] → 참고 노트 버튼
+    s = s.replace(/\[노트\s*(\d+)\]/g, (m, n) => {
+      const notes = (refs || []).filter((r) => r.type === "note");
+      const ref = notes[Number(n) - 1];
+      return ref ? '<button type="button" class="note-ref" data-note="' + esc(String(ref.id)) + '" title="' + esc(ref.company + " · " + ref.title) + '">노트 ' + n + "</button>" : m;
+    });
+    return s;
+  }
+
+  function markdown(src, refs) {
+    const lines = String(src || "").replace(/\r/g, "").split("\n");
+    const out = [];
+    let i = 0;
+    const isTableSep = (l) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
+    const cells = (l) => l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) {
+        i++;
+        continue;
+      }
+      if (/^```/.test(line)) {
+        const buf = [];
+        i++;
+        while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+        i++;
+        out.push("<pre><code>" + esc(buf.join("\n")) + "</code></pre>");
+        continue;
+      }
+      const h = /^(#{1,4})\s+(.*)$/.exec(line);
+      if (h) {
+        out.push("<h" + h[1].length + ">" + inline(h[2], refs) + "</h" + h[1].length + ">");
+        i++;
+        continue;
+      }
+      if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+        out.push("<hr>");
+        i++;
+        continue;
+      }
+      if (line.includes("|") && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+        const head = cells(line);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && lines[i].includes("|") && lines[i].trim()) rows.push(cells(lines[i++]));
+        out.push(
+          '<div class="md-table-wrap"><table class="md-table"><thead><tr>' + head.map((c) => "<th>" + inline(c, refs) + "</th>").join("") + "</tr></thead><tbody>" +
+          rows.map((r) => "<tr>" + head.map((_, j) => "<td>" + inline(r[j] || "", refs) + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>"
+        );
+        continue;
+      }
+      if (/^>\s?/.test(line)) {
+        const buf = [];
+        while (i < lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ""));
+        out.push("<blockquote>" + inline(buf.join(" "), refs) + "</blockquote>");
+        continue;
+      }
+      if (/^\s*([-*]|\d+[.)])\s+/.test(line)) {
+        const ordered = /^\s*\d+[.)]\s+/.test(line);
+        const items = [];
+        while (i < lines.length && /^\s*([-*]|\d+[.)])\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*]|\d+[.)])\s+/, ""));
+        out.push((ordered ? "<ol>" : "<ul>") + items.map((x) => "<li>" + inline(x, refs) + "</li>").join("") + (ordered ? "</ol>" : "</ul>"));
+        continue;
+      }
+      const buf = [];
+      while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|```|>|\s*([-*]|\d+[.)])\s+)/.test(lines[i]) && !(lines[i].includes("|") && i + 1 < lines.length && isTableSep(lines[i + 1]))) buf.push(lines[i++]);
+      out.push("<p>" + buf.map((b) => inline(b, refs)).join("<br>") + "</p>");
+    }
+    return out.join("");
+  }
+
   window.Kit = {
     IR_TYPES, IR_LABEL, irEvents, eventCovers, eventTime, byEventTime,
     $, $$, esc, pad, uid, toast,
@@ -554,5 +633,6 @@
     isModalOpen,
     confirm: confirmBox,
     parseCsv, toCsv, saveText, fileSize, num,
+    markdown,
   };
 })();

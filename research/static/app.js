@@ -16,84 +16,7 @@
   let busy = false;
   let refFilter = "all";
 
-  /* ---------- 마크다운 (답변 표시용, HTML 은 모두 이스케이프) ---------- */
-  function inline(text, refs) {
-    let s = esc(text);
-    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
-    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    s = s.replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
-    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, url) => '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + "</a>");
-    s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m, pre, url) => pre + '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + "</a>");
-    // [노트 3] → 참고 노트 버튼
-    s = s.replace(/\[노트\s*(\d+)\]/g, (m, n) => {
-      const notes = (refs || []).filter((r) => r.type === "note");
-      const ref = notes[Number(n) - 1];
-      return ref ? '<button type="button" class="note-ref" data-note="' + esc(String(ref.id)) + '" title="' + esc(ref.company + " · " + ref.title) + '">노트 ' + n + "</button>" : m;
-    });
-    return s;
-  }
-
-  function markdown(src, refs) {
-    const lines = String(src || "").replace(/\r/g, "").split("\n");
-    const out = [];
-    let i = 0;
-    const isTableSep = (l) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
-    const cells = (l) => l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-    while (i < lines.length) {
-      const line = lines[i];
-      if (!line.trim()) {
-        i++;
-        continue;
-      }
-      if (/^```/.test(line)) {
-        const buf = [];
-        i++;
-        while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
-        i++;
-        out.push("<pre><code>" + esc(buf.join("\n")) + "</code></pre>");
-        continue;
-      }
-      const h = /^(#{1,4})\s+(.*)$/.exec(line);
-      if (h) {
-        out.push("<h" + h[1].length + ">" + inline(h[2], refs) + "</h" + h[1].length + ">");
-        i++;
-        continue;
-      }
-      if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
-        out.push("<hr>");
-        i++;
-        continue;
-      }
-      if (line.includes("|") && i + 1 < lines.length && isTableSep(lines[i + 1])) {
-        const head = cells(line);
-        i += 2;
-        const rows = [];
-        while (i < lines.length && lines[i].includes("|") && lines[i].trim()) rows.push(cells(lines[i++]));
-        out.push(
-          '<div class="md-table-wrap"><table class="md-table"><thead><tr>' + head.map((c) => "<th>" + inline(c, refs) + "</th>").join("") + "</tr></thead><tbody>" +
-          rows.map((r) => "<tr>" + head.map((_, j) => "<td>" + inline(r[j] || "", refs) + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>"
-        );
-        continue;
-      }
-      if (/^>\s?/.test(line)) {
-        const buf = [];
-        while (i < lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ""));
-        out.push("<blockquote>" + inline(buf.join(" "), refs) + "</blockquote>");
-        continue;
-      }
-      if (/^\s*([-*]|\d+[.)])\s+/.test(line)) {
-        const ordered = /^\s*\d+[.)]\s+/.test(line);
-        const items = [];
-        while (i < lines.length && /^\s*([-*]|\d+[.)])\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*]|\d+[.)])\s+/, ""));
-        out.push((ordered ? "<ol>" : "<ul>") + items.map((x) => "<li>" + inline(x, refs) + "</li>").join("") + (ordered ? "</ol>" : "</ul>"));
-        continue;
-      }
-      const buf = [];
-      while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|```|>|\s*([-*]|\d+[.)])\s+)/.test(lines[i]) && !(lines[i].includes("|") && i + 1 < lines.length && isTableSep(lines[i + 1]))) buf.push(lines[i++]);
-      out.push("<p>" + buf.map((b) => inline(b, refs)).join("<br>") + "</p>");
-    }
-    return out.join("");
-  }
+  const markdown = K.markdown;
 
   /* ---------- 노트 검색 (브라우저 모드·AI 없음) ---------- */
   const STOP = new Set(["정리", "정리해줘", "해줘", "알려줘", "관련", "대한", "내용", "자료", "그리고", "최근", "무엇", "어떻게", "핵심", "변화", "근거", "찾아", "요약", "요약해줘", "비교", "있는", "없는", "대해", "보고서", "리포트"]);
@@ -697,7 +620,7 @@
   K.session().then(async (s) => {
     session = s;
     if (s.server) status = await s.api("GET", "/api/integrations").catch(() => ({ ai: false }));
-    else health = await fetch("/api/health").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    else if (document.querySelector('meta[name="hana-mode"][content="nodb"]')) health = await fetch("/api/health").then((r) => (r.ok ? r.json() : null)).catch(() => null);
     try {
       await threads.list();
     } catch (err) {

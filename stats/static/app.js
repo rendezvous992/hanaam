@@ -8,6 +8,7 @@
   let notes = [];
   let people = []; // [{displayName, department}]
   let sortKey = "total";
+  let sectorOf = () => "미지정"; // 종목 → 섹터 (노트 화면에서 지정)
 
   function inRange(n) {
     const r = $("#st-range").value;
@@ -102,6 +103,13 @@
       : '<p class="st-empty">이 기간에 노트가 없습니다.</p>';
   }
 
+  function renderSectors(list) {
+    $("#st-sectors").innerHTML = list.length
+      ? bars(count(list, (n) => sectorOf(n.company)), (k) => k) +
+        '<p class="st-empty" style="padding:8px 0 0">섹터는 노트 화면의 ‘종목별 섹터 지정’에서 정합니다. <a href="/notes/">노트로 가기</a></p>'
+      : '<p class="st-empty">이 기간에 노트가 없습니다.</p>';
+  }
+
   function renderCompanies(list) {
     const rows = Array.from(count(list, "company").entries()).filter((r) => r[0]).sort((a, b) => b[1] - a[1]).slice(0, 15);
     $("#st-companies").innerHTML = rows.length
@@ -126,6 +134,7 @@
     renderMonths(list);
     renderPeople(list);
     renderCats(list);
+    renderSectors(list);
     renderCompanies(list);
     renderQuality(list);
   }
@@ -142,8 +151,8 @@
     render();
   });
   $("#st-csv").addEventListener("click", () => {
-    const rows = [["날짜", "기업", "종목코드", "분류", "유형", "작성자", "본부", "제목", "녹음", "첨부 수"]].concat(
-      current().map((n) => [n.date, n.company, n.ticker || "", CAT_LABEL[n.category] || "기타", n.type || "", n.author || "", deptOf(n.author), n.title, n.audio ? "있음" : "", (n.files || []).length])
+    const rows = [["날짜", "기업", "종목코드", "섹터", "분류", "유형", "작성자", "본부", "제목", "녹음", "첨부 수"]].concat(
+      current().map((n) => [n.date, n.company, n.ticker || "", sectorOf(n.company), CAT_LABEL[n.category] || "기타", n.type || "", n.author || "", deptOf(n.author), n.title, n.audio ? "있음" : "", (n.files || []).length])
     );
     K.saveText("노트통계-" + K.today() + ".csv", K.toCsv(rows), "text/csv;charset=utf-8");
   });
@@ -157,6 +166,9 @@
     } else {
       $("#st-dept").hidden = true;
     }
+    const sectors = await K.collection("company-sectors").list().catch(() => []);
+    const map = new Map(sectors.map((r) => [r.company, r.sector]));
+    sectorOf = (c) => map.get(c) || "미지정";
     notes = await K.readNotes();
     render();
   });

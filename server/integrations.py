@@ -245,6 +245,191 @@ def ask_claude(question: str, history: list[dict[str, str]], notes: list[dict[st
     return {"answer": answer or "답변이 비어 있습니다. 다시 시도해 주세요.", "web": web, "model": response.model}
 
 
+# ---------------------------------------------------------------------------
+# Claude 한 번 부르기 (요약 등 짧은 작업)
+# ---------------------------------------------------------------------------
+
+def claude_text(system: str, user: str, max_tokens: int = 8000) -> str:
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=_env("ANTHROPIC_API_KEY"), timeout=180.0, max_retries=1)
+    response = client.beta.messages.create(
+        model=_env("HANA_AI_MODEL") or "claude-opus-5",
+        max_tokens=max_tokens,
+        system=system,
+        thinking={"type": "adaptive"},
+        output_config={"effort": "medium"},
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",
+        messages=[{"role": "user", "content": user}],
+    )
+    if response.stop_reason == "refusal":
+        raise ValueError("이 내용은 처리할 수 없다는 응답을 받았습니다.")
+    return "".join(b.text for b in response.content if b.type == "text").strip()
+
+
+def ai_error_message(e: Exception) -> str:
+    import anthropic
+
+    if isinstance(e, anthropic.AuthenticationError):
+        return "AI 키가 올바르지 않습니다. 관리자에게 ANTHROPIC_API_KEY 를 확인해 달라고 해 주세요."
+    if isinstance(e, anthropic.RateLimitError):
+        return "AI 사용량이 잠시 많습니다. 1분쯤 뒤에 다시 시도해 주세요."
+    if isinstance(e, anthropic.APIStatusError):
+        return f"AI 서버 오류({e.status_code})입니다."
+    if isinstance(e, anthropic.APIConnectionError):
+        return "AI 서버에 연결하지 못했습니다."
+    return str(e) or "AI 처리 중 오류가 났습니다."
+
+
+SUMMARY_PROMPT = """당신은 자산운용사 리서치 팀의 노트 정리 도우미입니다. 미팅·IR·기사 원문을 받아 팀 노트 형식으로 정리합니다.
+형식 (마크다운, 한국어):
+# 한 줄 요약
+## 핵심 내용
+- 사실·숫자 위주 불릿 (단위·기준 시점 포함)
+## Q&A
+Q. 질문
+A. 답변   (원문에 문답이 있을 때만)
+## 투자 포인트 / 리스크
+- 원문 근거가 있는 것만
+원문에 없는 내용은 만들지 말고, 불확실한 것은 (확인 필요) 라고 적습니다. 서론·맺음말 없이 위 형식만 출력합니다."""
+
+
+# ---------------------------------------------------------------------------
+# 링크 본문 가져오기 (내부망 주소는 막는다)
+# ---------------------------------------------------------------------------
+
+import html as _html
+import ipaddress
+import socket
+from html.parser import HTMLParser
+
+
+def _public_host(host: str) -> bool:
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            return False
+    return True
+
+
+def _check_url(url: str) -> urllib.parse.ParseResult:
+    u = urllib.parse.urlparse(url.strip())
+    if u.scheme not in ("http", "https") or not u.hostname:
+        raise HTTPException(400, "http:// 또는 https:// 로 시작하는 주소를 넣어 주세요.")
+    if u.port not in (None, 80, 443):
+        raise HTTPException(400, "이 주소는 가져올 수 없습니다.")
+    if not _public_host(u.hostname):
+        raise HTTPException(400, "사내망·내부 주소는 가져올 수 없습니다.")
+    return u
+
+
+class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _check_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+class _PageText(HTMLParser):
+    SKIP = {"script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg", "button", "iframe"}
+    BLOCK = {"p", "div", "br", "li", "h1", "h2", "h3", "h4", "tr", "section", "article", "blockquote"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.meta: dict[str, str] = {}
+        self.title = ""
+        self._in_title = False
+        self._skip = 0
+        self._article = 0
+        self.parts: list[str] = []
+        self.article_parts: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "meta":
+            key = (a.get("property") or a.get("name") or "").lower()
+            if key and a.get("content"):
+                self.meta.setdefault(key, a["content"])
+        elif tag == "title":
+            self._in_title = True
+        if tag in self.SKIP:
+            self._skip += 1
+        if tag == "article":
+            self._article += 1
+        if tag in self.BLOCK:
+            self.parts.append("\n")
+            if self._article:
+                self.article_parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self._in_title = False
+        if tag in self.SKIP and self._skip:
+            self._skip -= 1
+        if tag == "article" and self._article:
+            self._article -= 1
+
+    def handle_data(self, data):
+        if self._in_title:
+            self.title += data
+            return
+        if self._skip:
+            return
+        self.parts.append(data)
+        if self._article:
+            self.article_parts.append(data)
+
+
+def _clean_text(parts: list[str]) -> str:
+    text = "".join(parts)
+    lines = [re.sub(r"[ \t ]+", " ", ln).strip() for ln in text.split("\n")]
+    # 너무 짧은 메뉴 조각은 버리고 문단만 남긴다
+    keep = [ln for ln in lines if len(ln) >= 25 or (ln and ln[-1:] in ".다요?!")]
+    return "\n".join(keep).strip()
+
+
+def fetch_link(url: str) -> dict[str, Any]:
+    _check_url(url)
+    opener = urllib.request.build_opener(_SafeRedirect())
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36",
+                                               "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.6"})
+    with opener.open(req, timeout=10) as res:
+        ctype = (res.headers.get("Content-Type") or "").lower()
+        raw = res.read(3_000_001)
+        final = res.geturl()
+    if len(raw) > 3_000_000:
+        raw = raw[:3_000_000]
+    if "pdf" in ctype:
+        return {"url": final, "title": final.rsplit("/", 1)[-1], "text": "", "kind": "pdf",
+                "detail": "PDF 파일은 본문을 자동으로 가져오지 못합니다. 파일을 내려받아 첨부해 주세요."}
+    if "html" not in ctype and "text" not in ctype:
+        raise HTTPException(400, "웹 페이지(HTML)만 가져올 수 있습니다.")
+    m = re.search(r"charset=([\w-]+)", ctype) or re.search(rb'<meta[^>]+charset=["\']?([\w-]+)', raw[:4000], re.I)
+    enc = (m.group(1).decode() if isinstance(m.group(1), bytes) else m.group(1)) if m else "utf-8"
+    try:
+        doc = raw.decode(enc, "replace")
+    except LookupError:
+        doc = raw.decode("utf-8", "replace")
+    p = _PageText()
+    p.feed(doc)
+    text = _clean_text(p.article_parts) if len(_clean_text(p.article_parts)) > 200 else _clean_text(p.parts)
+    title = p.meta.get("og:title") or _html.unescape(p.title).strip()
+    published = p.meta.get("article:published_time") or p.meta.get("og:regdate") or p.meta.get("date") or ""
+    return {
+        "url": final,
+        "title": title[:300],
+        "description": (p.meta.get("og:description") or p.meta.get("description") or "")[:1000],
+        "site": (p.meta.get("og:site_name") or urllib.parse.urlparse(final).hostname or "")[:100],
+        "published": published[:40],
+        "text": text[:30000],
+        "kind": "html",
+    }
+
+
 def run_research(conn_factory, question: str, history: list[dict[str, str]]) -> dict[str, Any]:
     with conn_factory() as conn:
         notes = search_notes(conn, question + " " + " ".join(str(m.get("content", "")) for m in history[-2:] if m.get("role") == "user"))
@@ -719,6 +904,45 @@ def register(app: FastAPI, require_user, has_feature, connect) -> None:
             except Exception as e:  # noqa: BLE001 (한 예약이 실패해도 다음 예약은 돌린다)
                 done.append(f"{sid}:error:{type(e).__name__}")
         return {"ran": done, "due": len(due)}
+
+    # --- 링크 가져오기 · AI 요약 ---------------------------------------------
+
+    @app.post("/api/fetch-link")
+    async def api_fetch_link(request: Request) -> Any:
+        require_user(request)
+        data = await request.json()
+        url = str((data or {}).get("url") or "").strip()[:2000]
+        import anyio
+
+        try:
+            return await anyio.to_thread.run_sync(lambda: fetch_link(url))
+        except HTTPException:
+            raise
+        except urllib.error.HTTPError as e:
+            return JSONResponse({"detail": f"그 사이트가 요청을 거절했습니다 ({e.code}). 로그인이 필요한 페이지일 수 있습니다."}, status_code=502)
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            return JSONResponse({"detail": f"페이지를 가져오지 못했습니다. ({type(e).__name__})"}, status_code=502)
+
+    @app.post("/api/ai/summarize")
+    async def api_ai_summarize(request: Request) -> Any:
+        user = require_user(request)
+        if not has_feature(user, "ai_research"):
+            raise HTTPException(403, "AI 기능 권한(AI 리서치)이 없습니다.")
+        if not _env("ANTHROPIC_API_KEY"):
+            return not_connected("AI", "ANTHROPIC_API_KEY")
+        data = await request.json()
+        text = str((data or {}).get("text") or "").strip()
+        if len(text) < 30:
+            raise HTTPException(400, "요약할 내용이 너무 짧습니다.")
+        head = " · ".join(x for x in [str(data.get("company") or ""), str(data.get("title") or "")] if x)
+        prompt = (f"<source title=\"{head}\">\n{text[:60000]}\n</source>\n\n위 원문을 노트 형식으로 정리해 주세요.")
+        import anyio
+
+        try:
+            out = await anyio.to_thread.run_sync(lambda: claude_text(SUMMARY_PROMPT, prompt))
+        except Exception as e:  # noqa: BLE001 — 사용자에게 이유만 알려 준다
+            return JSONResponse({"detail": ai_error_message(e)}, status_code=502)
+        return {"summary": out}
 
     # --- 시세 --------------------------------------------------------------
 

@@ -1121,7 +1121,9 @@ PUBLIC_PAGES = {"login": "login.html", "signup": "signup.html"}
 
 def _page(path: Path, request: Request, section: str) -> Response:
     if STATIC_ONLY:
-        return HTMLResponse(path.read_text(encoding="utf-8"), headers={"Cache-Control": "no-cache"})
+        # DB 없이 뜬 Vercel: 브라우저 저장 모드로 동작하되, 화면이 '무엇이 빠졌는지' 안내할 수 있게 표시한다
+        html = path.read_text(encoding="utf-8").replace("<head>", '<head><meta name="hana-mode" content="nodb">', 1)
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
     user = session_user(request)
     if user is None:
         target = request.url.path + (("?" + request.url.query) if request.url.query else "")

@@ -915,3 +915,21 @@
 .sector-edit-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .sector-edit-row[hidden] { display: none; }
 .sector-edit-row select { width: 140px; appearance: auto; }
+
+/* AI 요약·AI 답변 */
+.ai-body-row { display: flex; justify-content: flex-end; margin-top: -6px; }
+.ai-sum { margin: 0 0 14px; padding: 14px 16px; border: 1px solid var(--primary); border-radius: var(--radius); background: var(--primary-soft); }
+.ai-sum__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 13px; color: var(--primary); }
+.ai-sum__head span { color: var(--text-muted); font-size: 12px; }
+.ai-sum__body { font-size: 14px; line-height: 1.7; color: var(--text-strong); }
+.ai-sum__actions { display: flex; gap: 6px; margin-top: 10px; }
+.md h1, .md h2, .md h3 { margin: 12px 0 6px; font-size: 15px; color: var(--text-strong); }
+.md h1 { font-size: 16px; }
+.md p { margin: 6px 0; }
+.md ul, .md ol { margin: 6px 0; padding-left: 20px; }
+.md blockquote { margin: 8px 0; padding: 6px 12px; border-left: 3px solid var(--border-strong); color: var(--text-muted); }
+.md .md-table-wrap { overflow-x: auto; margin: 8px 0; }
+.md .md-table { border-collapse: collapse; font-size: 13px; }
+.md .md-table th, .md .md-table td { border: 1px solid var(--border); padding: 5px 8px; text-align: left; }
+.md .md-table th { background: var(--surface-sunken); }
+.md .note-ref { border: 1px solid var(--primary); border-radius: 10px; background: var(--surface); color: var(--primary); font-size: 11px; padding: 0 6px; cursor: pointer; }

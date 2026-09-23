@@ -119,6 +119,13 @@
   }
 
   let CURRENT_USER = ($(".hana-account-copy strong") || {}).textContent || "사용자";
+  // 서버 모드 + AI 리서치 권한 + AI 키가 있으면 AI 기능(물어보기·요약)을 켠다
+  let aiReady = false;
+  let serverApi = null;
+  async function aiSummarize(text, company, title) {
+    const out = await serverApi("POST", "/api/ai/summarize", { text, company, title });
+    return out.summary;
+  }
 
   /* ================================================================
    * 저장소
@@ -1034,7 +1041,7 @@
       "</div>" +
       (n.audio
         ? '<div class="detail-audio-wrap" data-audio><span class="detail-audio-label">🎙 녹음</span></div>' +
-          '<p class="detail-audio-note">녹음 파일은 이 브라우저에만 저장되어 있습니다. 자동 받아쓰기는 지원하지 않으니 본문은 직접 정리해 주세요.</p>'
+          '<p class="detail-audio-note">' + (store.server ? "녹음은 서버에 저장되어 있습니다." : "녹음 파일은 이 브라우저에만 저장되어 있습니다.") + " 자동 받아쓰기는 지원하지 않으니 본문은 직접 정리해 주세요.</p>"
         : "") +
       (attach.length ? '<div class="detail-attach">' + attach.join("") + "</div>" : "") +
       (n.body && n.body.trim()
@@ -1043,6 +1050,7 @@
       '<div class="modal__footer">' +
       '<button type="button" class="btn btn--danger btn--sm" data-act="delete">삭제</button>' +
       '<div class="modal__footer-right">' +
+      (aiReady && String(n.body || "").trim().length >= 30 ? '<button type="button" class="btn btn--ghost btn--sm" data-act="ai-sum">✦ AI 요약</button>' : "") +
       '<button type="button" class="btn btn--ghost btn--sm" data-act="print">인쇄</button>' +
       '<button type="button" class="btn btn--ghost btn--sm" data-act="edit">수정</button>' +
       '<button type="button" class="btn btn--primary btn--sm" data-act="close">닫기</button>' +
@@ -1124,6 +1132,41 @@
       if (!act) return;
       const what = act.getAttribute("data-act");
       if (what === "close") ctx.close();
+      else if (what === "ai-sum") {
+        act.disabled = true;
+        act.textContent = "요약하는 중…";
+        const bodyEl = $(".detail-body", ctx.modal);
+        try {
+          const summary = await aiSummarize(n.body, n.company, n.title);
+          bodyEl.insertAdjacentHTML(
+            "beforebegin",
+            '<div class="ai-sum"><div class="ai-sum__head"><b>✦ AI 요약</b><span>원문을 바탕으로 만든 초안입니다. 확인 후 반영하세요.</span></div>' +
+              '<div class="ai-sum__body md">' + window.Kit.markdown(summary) + "</div>" +
+              '<div class="ai-sum__actions"><button type="button" class="btn btn--primary btn--sm" data-act="ai-apply">본문 위에 넣기</button>' +
+              '<button type="button" class="btn btn--ghost btn--sm" data-act="ai-copy">복사</button></div></div>'
+          );
+          ctx.modal.__aiSummary = summary;
+          act.remove();
+        } catch (err) {
+          act.disabled = false;
+          act.textContent = "✦ AI 요약";
+          toast(err.message, true);
+        }
+      } else if (what === "ai-copy") {
+        navigator.clipboard.writeText(ctx.modal.__aiSummary || "").then(() => toast("복사했습니다."), () => toast("복사하지 못했습니다.", true));
+      } else if (what === "ai-apply") {
+        act.disabled = true;
+        try {
+          await store.update(n, { body: ctx.modal.__aiSummary + "\n\n---\n## 원문\n" + n.body });
+          toast("요약을 본문 위에 넣었습니다.");
+          ctx.close(true);
+          render();
+          openDetail(n.id);
+        } catch (err) {
+          act.disabled = false;
+          toast("저장하지 못했습니다: " + err.message, true);
+        }
+      }
       else if (what === "print") printNote(n);
       else if (what === "edit") {
         ctx.close(true);
@@ -1235,7 +1278,8 @@
       '<input class="input" name="title" maxlength="200" value="' + esc(n.title) + '"></label>' +
       '<label class="field"><span class="field__label">본문 <span class="field__label-note">— <code># 제목</code> <code>## 소제목</code> <code>- 목록</code> <code>Q. / A.</code> 형식이 보기 좋게 정리됩니다</span></span>' +
       '<textarea class="input input--textarea input--body" name="body" rows="10">' + esc(n.body) + "</textarea></label>" +
-      '<div class="field"><span class="field__label">첨부 파일 <span class="field__label-note">— 이 브라우저에만 저장됩니다</span></span>' +
+      '<div class="ai-body-row"><button type="button" class="btn btn--ghost btn--sm" data-act="ai-body"' + (aiReady && String(n.body || "").trim().length >= 30 ? "" : " hidden") + ">✦ AI 로 노트 형식 정리</button></div>" +
+      '<div class="field"><span class="field__label">첨부 파일 <span class="field__label-note">— ' + (store.server ? "서버에 저장되어 부서원과 함께 봅니다" : "이 브라우저에만 저장됩니다") + "</span></span>" +
       '<ul class="file-list" data-kept></ul>' +
       '<input class="input input--file" type="file" name="files" multiple></div>' +
       '<div class="modal__footer">' +
@@ -1336,7 +1380,13 @@
     });
 
     // --- 링크 가져오기
-    function importLink() {
+    form.addEventListener("input", (e) => {
+      if (e.target.name !== "body") return;
+      const b = form.querySelector('[data-act="ai-body"]');
+      if (b) b.hidden = !(aiReady && e.target.value.trim().length >= 30);
+    });
+
+    async function importLink() {
       const raw = f("link").value.trim();
       if (!raw) {
         toast("링크를 붙여넣어 주세요.", true);
@@ -1363,6 +1413,36 @@
         f("type").value = detectType(decoded);
       }
       dirty = true;
+      // 서버 모드: 페이지 본문·제목까지 가져온다
+      if (store.server && serverApi) {
+        const btn = form.querySelector('[data-act="import"]');
+        btn.disabled = true;
+        btn.textContent = "가져오는 중…";
+        try {
+          const page = await serverApi("POST", "/api/fetch-link", { url: raw });
+          let company = found;
+          if (!company) company = detectCompany((page.title || "") + "\n" + (page.text || "").slice(0, 3000));
+          if (company && !f("company").value.trim()) {
+            f("company").value = company.company;
+            f("ticker").value = company.ticker;
+          }
+          if (page.title && !f("title").value.trim()) f("title").value = page.title.slice(0, 200);
+          const pd = detectDate(page.published || "");
+          if (pd && !date) f("date").value = pd;
+          if (page.text && !f("body").value.trim()) {
+            f("body").value = (page.site ? "출처: " + page.site + "\n" : "") + page.text;
+          }
+          const aiBtn = form.querySelector('[data-act="ai-body"]');
+          if (aiBtn) aiBtn.hidden = !(aiReady && f("body").value.trim().length >= 30);
+          toast(page.text ? "제목·본문을 가져왔습니다" + (company ? " (종목: " + company.company + ")" : "") + "." : page.detail || "본문을 찾지 못했습니다. 제목만 채웠습니다.", !page.text);
+        } catch (err) {
+          toast("본문은 가져오지 못했습니다: " + err.message + (found ? " (종목은 채웠습니다)" : ""), true);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "가져오기";
+        }
+        return;
+      }
       if (found) toast("종목을 ‘" + found.company + "’(으)로 채웠습니다.");
       else toast("링크에서 종목을 찾지 못했습니다. 종목명을 직접 입력해 주세요.", true);
     }
@@ -1379,6 +1459,23 @@
       if (!act) return;
       const what = act.getAttribute("data-act");
       if (what === "import") importLink();
+      else if (what === "ai-body") {
+        const text = f("body").value.trim();
+        if (text.length < 30) return toast("정리할 본문이 너무 짧습니다.", true);
+        act.disabled = true;
+        act.textContent = "AI 가 정리하는 중…";
+        try {
+          const summary = await aiSummarize(text, f("company").value.trim(), f("title").value.trim());
+          f("body").value = summary + "\n\n---\n## 원문\n" + text;
+          dirty = true;
+          toast("노트 형식으로 정리했습니다. 원문은 아래에 남겨 두었습니다.");
+        } catch (err) {
+          toast(err.message, true);
+        } finally {
+          act.disabled = false;
+          act.textContent = "✦ AI 로 노트 형식 정리";
+        }
+      }
       else if (what === "cancel") ctx.close();
       else if (what === "delete") {
         if (!(await confirmDialog("‘" + n.title + "’ 노트를 삭제할까요? 되돌릴 수 없습니다.", "삭제", true))) return;
@@ -2016,6 +2113,35 @@
     timer: 0,
   };
 
+  async function aiAsk(question, t0) {
+    try {
+      const out = await serverApi("POST", "/api/research/ask", { question, history: [] });
+      window.clearInterval(ask.timer);
+      ask.submit.disabled = false;
+      const seconds = ((performance.now() - t0) / 1000).toFixed(1);
+      const refs = out.refs || [];
+      const noteRefs = refs.filter((r) => r.type === "note");
+      const answer = window.Kit.markdown(out.answer, refs);
+      ask.last = { question, answerHtml: answer, noteIds: noteRefs.map((r) => r.id), tokens: [] };
+      ask.result.innerHTML =
+        '<div class="ask__meta"><span>' + (out.ai ? "✦ AI 답변" : "노트 검색") + " · 노트 " + noteRefs.length + "건 참고 · " + seconds + "초" +
+        (out.ai ? "" : '<span class="ask__hint">' + esc(out.error || "AI 가 연결되지 않아 노트 검색 결과입니다") + "</span>") + "</span>" +
+        '<button type="button" class="ask__close" data-act="close" aria-label="닫기">×</button></div>' +
+        '<div class="ask__answer md">' + answer + "</div>" +
+        (noteRefs.length
+          ? '<div class="ask__cited"><span class="ask__cited-label">근거 노트</span>' +
+            noteRefs.map((r, i) => '<button type="button" class="ask__cite ask__cite--full ask__cite--kept" data-open="' + esc(String(r.id)) + '">[' + (i + 1) + "] " + esc(r.company + " · " + r.title) + "</button>").join("") + "</div>"
+          : "") +
+        '<div class="ask__save-row"><button type="button" class="ask__save" data-act="save">답변 저장</button>' +
+        '<a class="ask__save" href="/research/?q=' + encodeURIComponent(question) + '">AI 리서치에서 이어서 묻기</a>' +
+        '<span class="ask__save-hint">저장한 답변은 🔖에서 다시 볼 수 있습니다.</span></div>';
+    } catch (err) {
+      window.clearInterval(ask.timer);
+      ask.submit.disabled = false;
+      ask.result.innerHTML = '<div class="ask__meta"><span>답변을 받지 못했습니다: ' + esc(err.message) + '</span><button type="button" class="ask__close" data-act="close" aria-label="닫기">×</button></div>';
+    }
+  }
+
   function runAsk(question) {
     const t0 = performance.now();
     window.clearInterval(ask.timer);
@@ -2030,6 +2156,12 @@
       const elapsedEl = $("[data-elapsed]", ask.result);
       if (elapsedEl) elapsedEl.textContent = ((performance.now() - t0) / 1000).toFixed(1) + "초";
     }, 100);
+    if (aiReady) {
+      const label = $(".ask__meta span", ask.result);
+      if (label && label.firstChild) label.childNodes[1].textContent = "AI 가 노트를 읽고 답하는 중… (20초~1분) ";
+      aiAsk(question, t0);
+      return;
+    }
 
     window.setTimeout(() => {
       window.clearInterval(ask.timer);
@@ -2116,6 +2248,11 @@
     runAsk(q);
   });
   ask.result.addEventListener("click", (e) => {
+    const ref = e.target.closest("[data-note]");
+    if (ref) {
+      openDetail(ref.getAttribute("data-note"));
+      return;
+    }
     const open = e.target.closest("[data-open]");
     if (open) {
       openDetail(open.getAttribute("data-open"));
@@ -2390,7 +2527,17 @@
     if (!session) return;
     if (session.server) {
       store = serverStore(session.api);
+      serverApi = session.api;
       CURRENT_USER = session.me.displayName || session.me.username;
+      if ((session.me.permissions || []).includes("ai_research")) {
+        session.api("GET", "/api/integrations").then((st) => {
+          aiReady = !!(st && st.ai);
+          if (aiReady) {
+            const inp = $("#ask-input");
+            if (inp) inp.placeholder = "노트에게 물어보기 — AI 가 노트를 읽고 답합니다. 예: 최근 태양광 관련해서 나온 얘기 있어?";
+          }
+        }).catch(() => {});
+      }
       // 서버 목록을 받기 전까지 원본 화면에 박혀 있던 예시 노트가 보이지 않게 한다
       el.noteList.innerHTML = "";
     }
