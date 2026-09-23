@@ -68,37 +68,83 @@
       small.innerHTML =
         '<a href="#" class="dart-source-link" id="csv-import">CSV 가져오기</a> · <a href="#" class="dart-source-link" id="csv-export">CSV 내보내기</a> · ' +
         '<a href="#" class="dart-source-link" id="csv-sample">양식 받기</a>' +
-        '<span id="dart-ir-wrap" hidden> · <a href="#" class="dart-source-link" id="dart-ir">DART IR 공시 불러오기</a></span>';
+        '<span id="dart-ir-wrap" hidden> · <a href="#" class="dart-source-link" id="dart-ir">DART IR 일정 보기·반영</a> · <span id="dart-ir-last"></span></span>';
     }
   }
 
-  // DART 기업설명회(IR) 공시 목록 → 골라서 일정으로 추가 (서버 모드)
+  // DART 기업설명회(IR) 공시 원문에서 읽은 일정 목록 + 캘린더 반영 (서버 모드)
+  async function syncDart(btn) {
+    const s = await K.session();
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "DART 에서 읽는 중… (처음엔 1~2분)";
+    }
+    try {
+      const out = await s.api("POST", "/api/dart/ir/sync");
+      K.toast("DART IR 일정: 새로 " + out.added + "건, 바뀐 " + out.updated + "건" + (out.pending ? " · 남은 " + out.pending + "건은 다시 누르면 이어서 읽습니다" : "") + (out.failed ? " · 읽지 못한 공시 " + out.failed + "건" : ""));
+      events = await store.list();
+      refresh();
+      loadDartStatus();
+      return true;
+    } catch (err) {
+      K.toast(err.message, true);
+      return false;
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "캘린더에 반영";
+      }
+    }
+  }
+  async function loadDartStatus() {
+    const s = await K.session();
+    const el = $("#dart-ir-last");
+    if (!s.server || !el) return;
+    try {
+      const st = await s.api("GET", "/api/dart/ir/status");
+      el.textContent = !st.connected ? "DART 연결 안 됨 (관리자: DART_API_KEY)" : st.last ? "마지막 반영 " + K.isoKst(st.last.at) + " · 공시 " + st.last.listed + "건" : "아직 반영 전 · 매일 21:00 자동";
+    } catch (e) {
+      /* 상태 표시는 없어도 된다 */
+    }
+  }
   async function showDartIr() {
-    const ctx = K.modal({ title: "DART 기업설명회(IR) 공시 — 최근 14일", size: "modal--wide", html: '<div class="modal__body"><p class="hint">불러오는 중…</p></div>' });
+    const ctx = K.modal({ title: "DART 기업설명회(IR) 일정", size: "modal--wide", html: '<div class="modal__body"><p class="hint">DART 공시 원문을 읽는 중… (처음엔 1~2분 걸릴 수 있습니다)</p></div>' });
     const body = $(".modal__body", ctx.modal);
     try {
       const s = await K.session();
-      const out = await s.api("GET", "/api/dart/ir?days=14");
+      const out = await s.api("GET", "/api/dart/ir/schedule?days=30");
       const items = out.items || [];
-      body.innerHTML = items.length
-        ? '<p class="hint">개최일·시간은 공시 원문에 있습니다. 원문을 확인하고 <b>일정 추가</b>를 누르세요.</p><div class="dart-ir-list">' +
-          items.map((it, i) =>
-            '<div class="dart-ir-item"><div><b>' + esc(it.company) + "</b> <span class=\"hint\">" + esc(it.date) + " 공시</span><br><span>" + esc(it.title) + "</span></div>" +
-            '<div class="dart-ir-item__actions"><a class="btn btn--ghost btn--sm" href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer">원문</a>' +
-            '<button type="button" class="btn btn--primary btn--sm" data-dart="' + i + '">일정 추가</button></div></div>'
-          ).join("") + "</div>"
-        : '<p class="hint">최근 14일 동안 기업설명회 공시가 없습니다.</p>';
-      body.addEventListener("click", (e) => {
-        const b = e.target.closest("[data-dart]");
-        if (!b) return;
-        const it = items[Number(b.getAttribute("data-dart"))];
-        ctx.close(true);
-        openEditor(null, { type: "open_ir", companies: it.company, date: K.today(), memo: it.title + "\n" + it.url });
+      const byDate = new Map();
+      items.forEach((it) => {
+        const k = it.date || "날짜 확인 필요";
+        if (!byDate.has(k)) byDate.set(k, []);
+        byDate.get(k).push(it);
+      });
+      const today = K.today();
+      body.innerHTML =
+        '<div class="dart-ir-top"><p class="hint">공시 원문의 개최일·시간 기준 · 최근 30일 공시 ' + out.listed + "건" + (out.pending ? " · 아직 읽지 않은 " + out.pending + "건" : "") +
+        '</p><button type="button" class="btn btn--primary btn--sm" data-dart-sync>캘린더에 반영</button></div>' +
+        (items.length
+          ? '<div class="dart-ir-list">' +
+            Array.from(byDate.entries()).map(([d, list]) =>
+              '<h4 class="dart-ir-day">' + (d.length === 10 ? esc(K.md(d) + " (" + K.weekdayName(d) + ")") + (d === today ? " · 오늘" : " · D-" + K.diffDays(today, d)) : esc(d)) + " <span>" + list.length + "건</span></h4>" +
+              list.map((it) =>
+                '<div class="dart-ir-item"><div><b>' + esc(it.time || "시간미정") + " " + esc(it.company) + '</b> <span class="hint">' + esc(it.code || "") + "</span>" +
+                ' <span class="dart-ir-badge">' + esc(K.IR_LABEL[/ndr/i.test((it.method || "") + (it.purpose || "")) ? "ndr" : "ir_meeting"] || "IR") + "</span><br><span>" + esc(it.purpose || it.title) + "</span>" +
+                (it.place ? '<br><span class="hint">' + esc(it.place) + "</span>" : "") + "</div>" +
+                '<div class="dart-ir-item__actions"><span class="hint">공시 ' + esc(K.md(it.filed || "")) + '</span><a class="btn btn--ghost btn--sm" href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer">DART ↗</a></div></div>'
+              ).join("")
+            ).join("") + "</div>"
+          : '<p class="hint">다가오는 IR 일정 공시가 없습니다.</p>');
+      body.addEventListener("click", async (e) => {
+        const b = e.target.closest("[data-dart-sync]");
+        if (b && (await syncDart(b))) ctx.close(true);
       });
     } catch (err) {
       body.innerHTML = '<p class="hint">' + esc(err.message) + "</p>";
     }
   }
+
 
   /* ---------- 거르기 ---------- */
   function splitNames(s) {
@@ -394,6 +440,7 @@
           data.poster = poster || null;
           if (existing && existing.poster && !poster) K.files.remove(existing.poster);
         }
+        if (existing && existing.source === "dart") data.dartEdited = true;
         const saved = existing ? await store.update(existing.id, data) : await store.create(data);
         events = store.cached();
         ctx.close(true);
@@ -773,6 +820,7 @@
         e.preventDefault();
         showDartIr();
       });
+      loadDartStatus();
     }
   })();
 })();

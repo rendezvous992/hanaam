@@ -120,10 +120,13 @@
 
   let CURRENT_USER = ($(".hana-account-copy strong") || {}).textContent || "사용자";
   // 서버 모드 + AI 리서치 권한 + AI 키가 있으면 AI 기능(물어보기·요약)을 켠다
-  let aiReady = false;
+  let aiReady = false; // 물어보기(Claude)
+  let sumReady = false; // 요약 (Grok 우선, 없으면 Claude)
+  let sumName = "AI";
   let serverApi = null;
   async function aiSummarize(text, company, title) {
     const out = await serverApi("POST", "/api/ai/summarize", { text, company, title });
+    if (out.provider) sumName = out.provider;
     return out.summary;
   }
 
@@ -1050,7 +1053,7 @@
       '<div class="modal__footer">' +
       '<button type="button" class="btn btn--danger btn--sm" data-act="delete">삭제</button>' +
       '<div class="modal__footer-right">' +
-      (aiReady && String(n.body || "").trim().length >= 30 ? '<button type="button" class="btn btn--ghost btn--sm" data-act="ai-sum">✦ AI 요약</button>' : "") +
+      (sumReady && String(n.body || "").trim().length >= 30 ? '<button type="button" class="btn btn--ghost btn--sm" data-act="ai-sum">✦ ' + esc(sumName) + " 요약</button>" : "") +
       '<button type="button" class="btn btn--ghost btn--sm" data-act="print">인쇄</button>' +
       '<button type="button" class="btn btn--ghost btn--sm" data-act="edit">수정</button>' +
       '<button type="button" class="btn btn--primary btn--sm" data-act="close">닫기</button>' +
@@ -1140,7 +1143,7 @@
           const summary = await aiSummarize(n.body, n.company, n.title);
           bodyEl.insertAdjacentHTML(
             "beforebegin",
-            '<div class="ai-sum"><div class="ai-sum__head"><b>✦ AI 요약</b><span>원문을 바탕으로 만든 초안입니다. 확인 후 반영하세요.</span></div>' +
+            '<div class="ai-sum"><div class="ai-sum__head"><b>✦ ' + esc(sumName) + " 요약</b>" + '<span>원문을 바탕으로 만든 초안입니다. 확인 후 반영하세요.</span></div>' +
               '<div class="ai-sum__body md">' + window.Kit.markdown(summary) + "</div>" +
               '<div class="ai-sum__actions"><button type="button" class="btn btn--primary btn--sm" data-act="ai-apply">본문 위에 넣기</button>' +
               '<button type="button" class="btn btn--ghost btn--sm" data-act="ai-copy">복사</button></div></div>'
@@ -1149,7 +1152,7 @@
           act.remove();
         } catch (err) {
           act.disabled = false;
-          act.textContent = "✦ AI 요약";
+          act.textContent = "✦ " + sumName + " 요약";
           toast(err.message, true);
         }
       } else if (what === "ai-copy") {
@@ -1278,7 +1281,7 @@
       '<input class="input" name="title" maxlength="200" value="' + esc(n.title) + '"></label>' +
       '<label class="field"><span class="field__label">본문 <span class="field__label-note">— <code># 제목</code> <code>## 소제목</code> <code>- 목록</code> <code>Q. / A.</code> 형식이 보기 좋게 정리됩니다</span></span>' +
       '<textarea class="input input--textarea input--body" name="body" rows="10">' + esc(n.body) + "</textarea></label>" +
-      '<div class="ai-body-row"><button type="button" class="btn btn--ghost btn--sm" data-act="ai-body"' + (aiReady && String(n.body || "").trim().length >= 30 ? "" : " hidden") + ">✦ AI 로 노트 형식 정리</button></div>" +
+      '<div class="ai-body-row"><button type="button" class="btn btn--ghost btn--sm" data-act="ai-body"' + (sumReady && String(n.body || "").trim().length >= 30 ? "" : " hidden") + ">✦ " + esc(sumName) + " 로 노트 형식 정리</button></div>" +
       '<div class="field"><span class="field__label">첨부 파일 <span class="field__label-note">— ' + (store.server ? "서버에 저장되어 부서원과 함께 봅니다" : "이 브라우저에만 저장됩니다") + "</span></span>" +
       '<ul class="file-list" data-kept></ul>' +
       '<input class="input input--file" type="file" name="files" multiple></div>' +
@@ -1383,7 +1386,7 @@
     form.addEventListener("input", (e) => {
       if (e.target.name !== "body") return;
       const b = form.querySelector('[data-act="ai-body"]');
-      if (b) b.hidden = !(aiReady && e.target.value.trim().length >= 30);
+      if (b) b.hidden = !(sumReady && e.target.value.trim().length >= 30);
     });
 
     async function importLink() {
@@ -1433,7 +1436,7 @@
             f("body").value = (page.site ? "출처: " + page.site + "\n" : "") + page.text;
           }
           const aiBtn = form.querySelector('[data-act="ai-body"]');
-          if (aiBtn) aiBtn.hidden = !(aiReady && f("body").value.trim().length >= 30);
+          if (aiBtn) aiBtn.hidden = !(sumReady && f("body").value.trim().length >= 30);
           toast(page.text ? "제목·본문을 가져왔습니다" + (company ? " (종목: " + company.company + ")" : "") + "." : page.detail || "본문을 찾지 못했습니다. 제목만 채웠습니다.", !page.text);
         } catch (err) {
           toast("본문은 가져오지 못했습니다: " + err.message + (found ? " (종목은 채웠습니다)" : ""), true);
@@ -1463,7 +1466,7 @@
         const text = f("body").value.trim();
         if (text.length < 30) return toast("정리할 본문이 너무 짧습니다.", true);
         act.disabled = true;
-        act.textContent = "AI 가 정리하는 중…";
+        act.textContent = sumName + " 가 정리하는 중…";
         try {
           const summary = await aiSummarize(text, f("company").value.trim(), f("title").value.trim());
           f("body").value = summary + "\n\n---\n## 원문\n" + text;
@@ -1473,7 +1476,7 @@
           toast(err.message, true);
         } finally {
           act.disabled = false;
-          act.textContent = "✦ AI 로 노트 형식 정리";
+          act.textContent = "✦ " + sumName + " 로 노트 형식 정리";
         }
       }
       else if (what === "cancel") ctx.close();
@@ -2532,6 +2535,8 @@
       if ((session.me.permissions || []).includes("ai_research")) {
         session.api("GET", "/api/integrations").then((st) => {
           aiReady = !!(st && st.ai);
+          sumReady = !!(st && st.summary);
+          if (st && st.summaryProvider) sumName = st.summaryProvider;
           if (aiReady) {
             const inp = $("#ask-input");
             if (inp) inp.placeholder = "노트에게 물어보기 — AI 가 노트를 읽고 답합니다. 예: 최근 태양광 관련해서 나온 얘기 있어?";

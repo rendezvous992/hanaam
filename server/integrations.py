@@ -8,6 +8,8 @@ AI 리서치는 저장된 노트 검색 결과만 돌려준다.
   DART_API_KEY        DART OpenAPI (opendart.fss.or.kr 에서 무료 발급)
   EODHD_API_KEY       경제지표 일정 (eodhd.com)
   CRON_SECRET         예약 리서치를 깨우는 주기 호출(Vercel Cron) 확인용
+  XAI_API_KEY         노트 요약(Grok). 있으면 요약은 Grok 으로, 없으면 Claude 로 한다
+  XAI_MODEL           (선택) Grok 모델 이름, 기본 grok-4
 """
 
 from __future__ import annotations
@@ -268,8 +270,86 @@ def claude_text(system: str, user: str, max_tokens: int = 8000) -> str:
     return "".join(b.text for b in response.content if b.type == "text").strip()
 
 
+# ---------------------------------------------------------------------------
+# Grok (xAI) — 노트 요약용. OpenAI 호환 chat/completions 를 표준 라이브러리로 부른다
+# ---------------------------------------------------------------------------
+
+XAI_BASE = "https://api.x.ai/v1"
+
+
+class GrokError(Exception):
+    pass
+
+
+def _xai(method: str, path: str, body: Optional[dict[str, Any]] = None, timeout: float = 120) -> Any:
+    req = urllib.request.Request(
+        XAI_BASE + path,
+        data=json.dumps(body).encode() if body is not None else None,
+        method=method,
+        headers={"Authorization": "Bearer " + _env("XAI_API_KEY"), "Content-Type": "application/json", "User-Agent": UA},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as res:  # noqa: S310 (xAI 고정 주소)
+            return json.loads(res.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:500]
+        if e.code in (401, 403):
+            raise GrokError("Grok API 키가 올바르지 않습니다. 관리자에게 XAI_API_KEY 를 확인해 달라고 해 주세요.")
+        if e.code == 429:
+            raise GrokError("Grok 사용량이 잠시 많거나 크레딧이 부족합니다. 잠시 뒤 다시 시도해 주세요.")
+        raise GrokError(f"Grok 오류({e.code}): {detail}")
+    except (urllib.error.URLError, TimeoutError) as e:
+        raise GrokError(f"Grok 서버에 연결하지 못했습니다. ({type(e).__name__})")
+
+
+def _grok_models() -> list[str]:
+    def load() -> list[str]:
+        data = _xai("GET", "/models", timeout=20)
+        ids = [m.get("id", "") for m in data.get("data", []) if isinstance(m, dict)]
+        return sorted([i for i in ids if i.startswith("grok") and not re.search(r"image|vision|imagine|embed", i)], reverse=True)
+
+    return cached("xai:models", 3600, load)
+
+
+def grok_text(system: str, user: str, max_tokens: int = 6000) -> str:
+    def call(model: str) -> str:
+        data = _xai("POST", "/chat/completions", {
+            "model": model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "max_tokens": max_tokens,
+            "temperature": 0.2,
+        })
+        choice = (data.get("choices") or [{}])[0]
+        return str((choice.get("message") or {}).get("content") or "").strip()
+
+    model = _env("XAI_MODEL") or "grok-4"
+    try:
+        out = call(model)
+    except GrokError as e:
+        # 모델 이름이 바뀌었으면 계정에서 쓸 수 있는 grok 모델로 한 번 더 시도한다
+        if "model" not in str(e).lower() or _env("XAI_MODEL"):
+            raise
+        models = _grok_models()
+        if not models:
+            raise
+        out = call(models[0])
+    if not out:
+        raise GrokError("Grok 이 빈 답을 보냈습니다. 다시 시도해 주세요.")
+    return out
+
+
+def summarize_text(system: str, user: str) -> tuple[str, str]:
+    """요약: Grok 키가 있으면 Grok, 없으면 Claude. (본문, 사용한 AI 이름)"""
+    if _env("XAI_API_KEY"):
+        return grok_text(system, user), "Grok"
+    return claude_text(system, user), "Claude"
+
+
 def ai_error_message(e: Exception) -> str:
     import anthropic
+
+    if isinstance(e, GrokError):
+        return str(e)
 
     if isinstance(e, anthropic.AuthenticationError):
         return "AI 키가 올바르지 않습니다. 관리자에게 ANTHROPIC_API_KEY 를 확인해 달라고 해 주세요."
@@ -681,9 +761,168 @@ def _disclosure(d: dict[str, Any]) -> dict[str, Any]:
         "code": d.get("stock_code") or "",
         "title": (d.get("report_nm") or "").strip(),
         "date": f"{dt[:4]}-{dt[4:6]}-{dt[6:8]}" if len(dt) == 8 else dt,
+        "filed": f"{dt[:4]}-{dt[4:6]}-{dt[6:8]}" if len(dt) == 8 else dt,
         "filer": d.get("flr_nm") or "",
         "url": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=" + (d.get("rcept_no") or ""),
     }
+
+
+# ---------------------------------------------------------------------------
+# DART 기업설명회(IR) 공시 원문 → IR 일정 (개최일·시간·목적·장소)
+# ---------------------------------------------------------------------------
+
+_DATE_RE = re.compile(r"(20\d{2})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})")
+_TIME_RE = re.compile(r"(?<!\d)([01]?\d|2[0-3])\s*[:시]\s*([0-5]\d)(?!\d)")
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _cell_text(html_part: str) -> str:
+    return re.sub(r"\s+", " ", _html.unescape(_TAG_RE.sub(" ", html_part))).strip()
+
+
+def dart_doc_rows(xml: str) -> list[list[str]]:
+    """공시 원문(XML)의 표를 행·칸 글자로 푼다."""
+    rows = []
+    for tr in re.findall(r"<TR\b[^>]*>(.*?)</TR>", xml, re.S | re.I):
+        cells = [_cell_text(c) for c in re.findall(r"<T[DHEU]\b[^>]*>(.*?)</T[DHEU]>", tr, re.S | re.I)]
+        cells = [c for c in cells if c]
+        if cells:
+            rows.append(cells)
+    return rows
+
+
+def _row_value(rows: list[list[str]], *keys: str) -> str:
+    for r in rows:
+        head = r[0].replace(" ", "")
+        if any(k in head for k in keys):
+            return " ".join(r[1:]).strip()
+    return ""
+
+
+def parse_ir_doc(xml: str) -> dict[str, Any]:
+    rows = dart_doc_rows(xml)
+    when = _row_value(rows, "일시", "개최일", "일자")
+    if not when:
+        m = re.search(r"일\s*시[^0-9]{0,20}(.{0,80})", _cell_text(xml))
+        when = m.group(1) if m else ""
+    dates = ["%s-%02d-%02d" % (y, int(mo), int(d)) for y, mo, d in _DATE_RE.findall(when)]
+    times = ["%02d:%s" % (int(h), mi) for h, mi in _TIME_RE.findall(_DATE_RE.sub(" ", when))]
+    return {
+        "date": dates[0] if dates else "",
+        "endDate": dates[-1] if len(dates) > 1 and dates[-1] != dates[0] else "",
+        "time": times[0] if times else "",
+        "endTime": times[1] if len(times) > 1 else "",
+        "place": _row_value(rows, "장소")[:200],
+        "target": _row_value(rows, "대상")[:200],
+        "method": _row_value(rows, "방식", "방법")[:200],
+        "purpose": (_row_value(rows, "목적") or _row_value(rows, "주요설명회내용", "내용"))[:300],
+    }
+
+
+def _dart_document(rcept_no: str) -> str:
+    raw = http_get("https://opendart.fss.or.kr/api/document.xml?" + urllib.parse.urlencode({"crtfc_key": _env("DART_API_KEY"), "rcept_no": rcept_no}), timeout=20)
+    if raw[:2] != b"PK":  # 오류는 zip 대신 짧은 XML/JSON 으로 온다
+        raise ValueError(raw[:200].decode("utf-8", "replace"))
+    parts = []
+    with zipfile.ZipFile(io.BytesIO(raw)) as z:
+        for name in z.namelist():
+            data = z.read(name)
+            for enc in ("utf-8", "euc-kr", "cp949"):
+                try:
+                    parts.append(data.decode(enc))
+                    break
+                except UnicodeDecodeError:
+                    continue
+    return "\n".join(parts)
+
+
+BROKER_RE = re.compile(r"([가-힣A-Za-z]+(?:증권|투자증권|자산운용|금융투자))")
+
+
+def ir_event_type(text: str) -> str:
+    t = text.lower()
+    if "ndr" in t or "논딜" in text:
+        return "ndr"
+    if "corporate day" in t or "콥데이" in text or "corp day" in t:
+        return "corp_day"
+    if "conference" in t or "컨퍼런스" in text or "weeks" in t or "포럼" in text:
+        return "conference"
+    return "ir_meeting"
+
+
+def dart_ir_schedule(conn_factory, days: int = 30, budget_s: float = 200) -> dict[str, Any]:
+    """최근 IR 공시를 원문까지 읽어 일정으로 만든다. 읽은 결과는 DB(dart-ir)에 남겨 다시 읽지 않는다."""
+    end = datetime.now(KST)
+    start = end - timedelta(days=max(1, min(days, 90)))
+    listed: list[dict[str, Any]] = []
+    for page in range(1, 31):
+        rows = _dart_list({"bgn_de": start.strftime("%Y%m%d"), "end_de": end.strftime("%Y%m%d"), "pblntf_ty": "I", "page_no": str(page)})
+        listed += [d for d in rows if "기업설명회" in (d.get("report_nm") or "")]
+        if len(rows) < 100:
+            break
+    listed.sort(key=lambda d: d.get("rcept_no") or "")  # 오래된 공시부터 → 정정 공시가 뒤에 덮어쓴다
+    with conn_factory() as conn:
+        have = {r["id"]: json.loads(r["data"]) for r in conn.all("SELECT id, data FROM records WHERE collection = 'dart-ir'")}
+    deadline = time.time() + budget_s
+    parsed, failed, pending = [], 0, 0
+    for d in listed:
+        no = d.get("rcept_no") or ""
+        info = have.get(no)
+        if info is None:
+            if time.time() > deadline:
+                pending += 1
+                continue
+            try:
+                info = parse_ir_doc(_dart_document(no))
+            except Exception:  # noqa: BLE001 — 한 건 실패해도 나머지는 읽는다
+                failed += 1
+                continue
+            disc = _disclosure(d)
+            disc.pop("date", None)  # date 는 공시일이 아니라 개최일
+            info.update(disc)
+            info["rcept_no"] = no
+            with conn_factory() as conn:
+                conn.execute("INSERT INTO records(collection, id, data, created_at) VALUES ('dart-ir', ?, ?, ?)", (no, json.dumps(info, ensure_ascii=False), now_iso()))
+        parsed.append(info)
+    return {"items": parsed, "failed": failed, "pending": pending, "listed": len(listed)}
+
+
+def sync_dart_ir(conn_factory, days: int = 30) -> dict[str, Any]:
+    """IR 일정(ir-events)에 DART 일정을 넣는다. 사람이 고친 일정(dartEdited)은 덮어쓰지 않는다."""
+    out = dart_ir_schedule(conn_factory, days)
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    added = updated = 0
+    with conn_factory() as conn:
+        for it in out["items"]:
+            if not it.get("date") or (it.get("endDate") or it["date"]) < today:
+                continue
+            code = it.get("code") or it.get("company")
+            rid = re.sub(r"[^A-Za-z0-9_-]", "", f"dart-{code}-{it['date']}-{(it.get('time') or 'na').replace(':', '')}")[:64]
+            purpose = it.get("purpose") or ""
+            broker = ", ".join(dict.fromkeys(BROKER_RE.findall(purpose + " " + (it.get("place") or "") + " " + (it.get("method") or ""))))
+            ev = {
+                "id": rid, "type": ir_event_type(" ".join([it.get("title", ""), purpose, it.get("method", "")])),
+                "title": purpose[:120], "companies": it.get("company", ""), "brokers": broker, "location": (it.get("place") or "")[:120],
+                "date": it["date"], "endDate": it.get("endDate", ""), "time": it.get("time", ""), "endTime": it.get("endTime", ""),
+                "memo": "\n".join(x for x in [("대상: " + it["target"]) if it.get("target") else "", ("방식: " + it["method"]) if it.get("method") else "",
+                                              "DART 공시 " + (it.get("filed") or "") + ": " + it.get("url", "")] if x),
+                "source": "dart", "dartNo": it.get("rcept_no", ""), "dartUrl": it.get("url", ""), "filedAt": it.get("filed", ""),
+                "createdBy": "DART", "createdAt": now_iso(),
+            }
+            row = conn.one("SELECT data FROM records WHERE collection = 'ir-events' AND id = ?", (rid,))
+            if row is None:
+                conn.execute("INSERT INTO records(collection, id, data, created_at) VALUES ('ir-events', ?, ?, ?)", (rid, json.dumps(ev, ensure_ascii=False), now_iso()))
+                added += 1
+            else:
+                prev = json.loads(row["data"])
+                if prev.get("dartEdited") or prev.get("dartNo") == ev["dartNo"]:
+                    continue
+                ev["createdAt"] = prev.get("createdAt", ev["createdAt"])
+                conn.execute("UPDATE records SET data = ?, updated_at = ? WHERE collection = 'ir-events' AND id = ?", (json.dumps(ev, ensure_ascii=False), now_iso(), rid))
+                updated += 1
+        from .app import settings_set  # noqa: PLC0415 (순환 import 피하기)
+        settings_set(conn, "dart-ir-sync", {"at": now_iso(), "added": added, "updated": updated, "listed": out["listed"], "failed": out["failed"], "pending": out["pending"]})
+    return {"added": added, "updated": updated, "listed": out["listed"], "failed": out["failed"], "pending": out["pending"]}
 
 
 # ---------------------------------------------------------------------------
@@ -735,6 +974,9 @@ def register(app: FastAPI, require_user, has_feature, connect) -> None:
             "economic": bool(_env("EODHD_API_KEY")),
             "quotes": _env("HANA_QUOTES") != "off",
             "cron": bool(_env("CRON_SECRET")),
+            # 요약은 Grok(XAI_API_KEY) 우선, 없으면 Claude
+            "summary": bool(_env("XAI_API_KEY") or _env("ANTHROPIC_API_KEY")),
+            "summaryProvider": "Grok" if _env("XAI_API_KEY") else ("Claude" if _env("ANTHROPIC_API_KEY") else ""),
         }
 
     @app.get("/api/integrations")
@@ -928,8 +1170,8 @@ def register(app: FastAPI, require_user, has_feature, connect) -> None:
         user = require_user(request)
         if not has_feature(user, "ai_research"):
             raise HTTPException(403, "AI 기능 권한(AI 리서치)이 없습니다.")
-        if not _env("ANTHROPIC_API_KEY"):
-            return not_connected("AI", "ANTHROPIC_API_KEY")
+        if not (_env("XAI_API_KEY") or _env("ANTHROPIC_API_KEY")):
+            return not_connected("AI 요약", "XAI_API_KEY(Grok)")
         data = await request.json()
         text = str((data or {}).get("text") or "").strip()
         if len(text) < 30:
@@ -939,10 +1181,10 @@ def register(app: FastAPI, require_user, has_feature, connect) -> None:
         import anyio
 
         try:
-            out = await anyio.to_thread.run_sync(lambda: claude_text(SUMMARY_PROMPT, prompt))
+            out, provider = await anyio.to_thread.run_sync(lambda: summarize_text(SUMMARY_PROMPT, prompt))
         except Exception as e:  # noqa: BLE001 — 사용자에게 이유만 알려 준다
             return JSONResponse({"detail": ai_error_message(e)}, status_code=502)
-        return {"summary": out}
+        return {"summary": out, "provider": provider}
 
     # --- 시세 --------------------------------------------------------------
 
@@ -1014,6 +1256,48 @@ def register(app: FastAPI, require_user, has_feature, connect) -> None:
         except (urllib.error.URLError, TimeoutError) as e:
             return JSONResponse({"detail": f"DART 에 연결하지 못했습니다. ({type(e).__name__})"}, status_code=502)
         return {"items": items}
+
+    @app.get("/api/dart/ir/schedule")
+    def api_dart_ir_schedule(request: Request, days: int = 30) -> Any:
+        """DART IR 공시 원문에서 읽은 일정 (개최일 순). 캘린더 'DART IR 일정' 목록용."""
+        require_user(request)
+        if not _env("DART_API_KEY"):
+            return not_connected("DART", "DART_API_KEY")
+        try:
+            out = cached(f"dart:irs:{days}", 600, lambda: dart_ir_schedule(connect, days, budget_s=60))
+        except (urllib.error.URLError, TimeoutError) as e:
+            return JSONResponse({"detail": f"DART 에 연결하지 못했습니다. ({type(e).__name__})"}, status_code=502)
+        today = datetime.now(KST).strftime("%Y-%m-%d")
+        items = sorted([i for i in out["items"] if (i.get("endDate") or i.get("date") or "9999") >= today],
+                       key=lambda i: (i.get("date") or "9999", i.get("time") or "99"))
+        return {**out, "items": items}
+
+    @app.post("/api/dart/ir/sync")
+    def api_dart_ir_sync(request: Request, days: int = 30) -> Any:
+        """DART IR 일정을 IR 캘린더에 반영 (누구나 누를 수 있고, 매일 21:00 자동)."""
+        require_user(request)
+        if not _env("DART_API_KEY"):
+            return not_connected("DART", "DART_API_KEY")
+        try:
+            return sync_dart_ir(connect, days)
+        except (urllib.error.URLError, TimeoutError) as e:
+            return JSONResponse({"detail": f"DART 에 연결하지 못했습니다. ({type(e).__name__})"}, status_code=502)
+
+    @app.get("/api/dart/ir/status")
+    def api_dart_ir_status(request: Request) -> Any:
+        require_user(request)
+        with connect() as conn:
+            row = conn.one("SELECT value FROM settings WHERE key = 'dart-ir-sync'")
+        return {"connected": bool(_env("DART_API_KEY")), "last": json.loads(row["value"]) if row else None}
+
+    @app.get("/api/cron/dart-ir")
+    def api_cron_dart_ir(request: Request) -> Any:
+        secret = _env("CRON_SECRET")
+        if not secret or request.headers.get("authorization") != f"Bearer {secret}":
+            raise HTTPException(401, "권한이 없습니다.")
+        if not _env("DART_API_KEY"):
+            return {"skipped": "DART_API_KEY 없음"}
+        return sync_dart_ir(connect, 30)
 
     # --- 경제지표 -----------------------------------------------------------
 

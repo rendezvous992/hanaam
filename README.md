@@ -21,13 +21,16 @@ GitHub 에 푸시하면 Vercel 이 자동으로 배포합니다. 데이터베이
    | `HANA_SETUP_CODE` | 권장 | 첫 가입자(=최고 관리자)만 아는 코드. 아무나 먼저 가입해 관리자가 되는 것을 막습니다 |
    | `ANTHROPIC_API_KEY` | AI 리서치 | https://console.anthropic.com 에서 발급. 없으면 AI 리서치가 노트 검색 결과만 보여 줍니다 |
    | `CRON_SECRET` | 예약 리서치 | 아무 긴 문자열. Vercel 이 10분마다 예약 작업을 깨울 때 확인용 |
-   | `DART_API_KEY` | 선택 | https://opendart.fss.or.kr 무료 발급 — 종목 분석의 공시, IR 공시 목록 |
+   | `DART_API_KEY` | 선택 | https://opendart.fss.or.kr 무료 발급 — IR 일정 자동 반영(매일 21:00, 공시 원문의 개최일·시간), 종목 분석 공시 |
    | `EODHD_API_KEY` | 선택 | https://eodhd.com — 경제 캘린더 자동 일정 |
-   | `HANA_AI_MODEL` | 선택 | AI 모델 (기본 `claude-opus-5`) |
+   | `XAI_API_KEY` | 노트 요약 | Grok(xAI) 키 — https://console.x.ai 에서 발급. 있으면 노트 요약·정리는 Grok 으로 합니다 |
+   | `XAI_MODEL` | 선택 | Grok 모델 (기본 `grok-4`, 없으면 계정에서 쓸 수 있는 grok 모델로 자동 전환) |
+   | `HANA_AI_MODEL` | 선택 | AI 리서치 모델 (기본 `claude-opus-5`) |
 
 4. **Deployments → 최근 배포 → Redeploy** (환경변수는 다시 배포해야 반영)
 5. 사이트 주소 → `/signup` 에서 첫 계정을 만들면 **최고 관리자**가 됩니다. 이후 가입 신청은 **계정 관리**에서 승인합니다.
 
+> API 키는 GitHub 저장소(공개)에 넣지 말고 Vercel 환경변수에만 넣으세요. GitHub Secrets 에 있는 값은 Vercel 이 읽지 못합니다.
 > DB 를 연결하지 않으면 로그인 없이 브라우저 저장 모드로 뜹니다(테스트용).
 > 파일(녹음·발표 자료)은 3MB 조각으로 DB 에 저장합니다. Neon 무료 용량(0.5GB)을 넘으면 요금제를 올려 주세요.
 

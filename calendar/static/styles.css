@@ -415,3 +415,8 @@
 .dart-ir-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; max-height: 60vh; overflow-y: auto; }
 .dart-ir-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; }
 .dart-ir-item__actions { display: flex; gap: 6px; flex: 0 0 auto; }
+
+.dart-ir-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.dart-ir-day { margin: 14px 0 4px; font-size: 13px; color: var(--text-strong); }
+.dart-ir-day span { color: var(--text-muted); font-weight: 400; font-size: 12px; }
+.dart-ir-badge { font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--primary-soft); color: var(--primary); }
