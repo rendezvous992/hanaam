@@ -926,6 +926,108 @@ def sync_dart_ir(conn_factory, days: int = 30) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# 종목 → WICS 26 업종 자동 지정 (DART 업종코드(KSIC) → WICS, 없으면 Grok)
+# ---------------------------------------------------------------------------
+
+WICS26 = ["에너지", "화학", "비철금속", "철강", "건설", "기계", "조선", "상사,자본재", "운송", "자동차", "화장품,의류", "호텔,레저", "미디어,교육",
+          "소매(유통)", "필수소비재", "건강관리", "은행", "증권", "보험", "소프트웨어", "IT하드웨어", "반도체", "IT가전", "디스플레이", "통신서비스", "유틸리티"]
+
+# 앞자리가 길게 맞는 것부터 본다 (한국표준산업분류 KSIC → WICS 26)
+KSIC_WICS = [
+    ("2611", "반도체"), ("2612", "반도체"), ("2621", "디스플레이"), ("262", "IT하드웨어"), ("263", "IT하드웨어"), ("264", "IT하드웨어"),
+    ("265", "IT가전"), ("266", "IT하드웨어"), ("261", "반도체"), ("271", "건강관리"), ("27", "IT하드웨어"),
+    ("282", "IT하드웨어"), ("285", "IT가전"), ("28", "상사,자본재"), ("29", "기계"), ("30", "자동차"), ("311", "조선"), ("31", "기계"),
+    ("19", "에너지"), ("2042", "화장품,의류"), ("21", "건강관리"), ("20", "화학"), ("22", "화학"), ("23", "건설"),
+    ("242", "비철금속"), ("24", "철강"), ("252", "기계"), ("25", "철강"),
+    ("10", "필수소비재"), ("11", "필수소비재"), ("12", "필수소비재"), ("13", "화장품,의류"), ("14", "화장품,의류"), ("15", "화장품,의류"),
+    ("16", "건설"), ("17", "화학"), ("18", "미디어,교육"), ("32", "IT가전"), ("33", "화장품,의류"),
+    ("35", "유틸리티"), ("36", "유틸리티"), ("37", "유틸리티"), ("38", "유틸리티"), ("41", "건설"), ("42", "건설"), ("68", "건설"),
+    ("45", "소매(유통)"), ("46", "상사,자본재"), ("47", "소매(유통)"),
+    ("49", "운송"), ("50", "운송"), ("51", "운송"), ("52", "운송"),
+    ("55", "호텔,레저"), ("56", "호텔,레저"), ("91", "호텔,레저"), ("75", "호텔,레저"),
+    ("5811", "미디어,교육"), ("5812", "미디어,교육"), ("58", "소프트웨어"), ("59", "미디어,교육"), ("60", "미디어,교육"), ("61", "통신서비스"),
+    ("62", "소프트웨어"), ("63", "소프트웨어"),
+    ("641", "은행"), ("64992", "상사,자본재"), ("64", "증권"), ("65", "보험"), ("66", "증권"),
+    ("7011", "건강관리"), ("70", "상사,자본재"), ("713", "미디어,교육"), ("71", "상사,자본재"), ("72", "상사,자본재"), ("73", "상사,자본재"),
+    ("74", "상사,자본재"), ("85", "미디어,교육"), ("86", "건강관리"), ("90", "미디어,교육"),
+]
+
+
+def ksic_to_wics(code: str) -> str:
+    code = re.sub(r"\D", "", code or "")
+    for prefix, sector in sorted(KSIC_WICS, key=lambda x: -len(x[0])):
+        if code.startswith(prefix):
+            return sector
+    return ""
+
+
+def _norm_name(n: str) -> str:
+    return re.sub(r"\s+|\(주\)|주식회사", "", str(n or "")).upper()
+
+
+def _dart_name_index() -> dict[str, dict[str, str]]:
+    def build() -> dict[str, dict[str, str]]:
+        return {_norm_name(v["name"]): {**v, "stock_code": k} for k, v in _dart_corp_codes().items()}
+
+    return cached("dart:byname", 86400, build)
+
+
+def _dart_industry(corp_code: str) -> str:
+    data = http_json("https://opendart.fss.or.kr/api/company.json?" + urllib.parse.urlencode({"crtfc_key": _env("DART_API_KEY"), "corp_code": corp_code}), timeout=10)
+    return str(data.get("induty_code") or "") if data.get("status") == "000" else ""
+
+
+GROK_SECTOR_PROMPT = ("당신은 한국 상장사 업종 분류 도우미입니다. 각 종목을 WICS 26개 업종 중 하나로 분류합니다. "
+                      "업종 이름은 다음 중에서 정확히 골라 씁니다: " + ", ".join(WICS26) + ". "
+                      "모르는 종목은 빈 문자열로 둡니다. 설명 없이 JSON 객체 {\"종목명\": \"업종\"} 만 출력합니다.")
+
+
+def auto_sectors(conn_factory, names: list[str], budget_s: float = 90) -> dict[str, dict[str, str]]:
+    out: dict[str, dict[str, str]] = {}
+    left = [n for n in dict.fromkeys(n.strip() for n in names if n and n.strip())][:300]
+    deadline = time.time() + budget_s
+    if _env("DART_API_KEY") and left:
+        try:
+            index = _dart_name_index()
+        except Exception:  # noqa: BLE001 — DART 가 안 되면 Grok 으로 넘어간다
+            index = {}
+        with conn_factory() as conn:
+            have = {r["id"]: json.loads(r["data"]) for r in conn.all("SELECT id, data FROM records WHERE collection = 'company-industry'")}
+        rest = []
+        for name in left:
+            corp = index.get(_norm_name(name))
+            if not corp:
+                rest.append(name)
+                continue
+            info = have.get(corp["corp_code"])
+            if info is None and time.time() < deadline:
+                try:
+                    info = {"induty_code": _dart_industry(corp["corp_code"]), "name": corp["name"], "stock_code": corp["stock_code"]}
+                    with conn_factory() as conn:
+                        conn.execute("INSERT INTO records(collection, id, data, created_at) VALUES ('company-industry', ?, ?, ?)",
+                                     (corp["corp_code"], json.dumps(info, ensure_ascii=False), now_iso()))
+                except Exception:  # noqa: BLE001
+                    info = None
+            sector = ksic_to_wics((info or {}).get("induty_code", ""))
+            if sector:
+                out[name] = {"sector": sector, "source": "DART 업종코드 " + info["induty_code"]}
+            else:
+                rest.append(name)
+        left = rest
+    if _env("XAI_API_KEY") and left and time.time() < deadline:
+        try:
+            raw = grok_text(GROK_SECTOR_PROMPT, "\n".join(left[:150]), max_tokens=4000)
+            m = re.search(r"\{.*\}", raw, re.S)
+            guess = json.loads(m.group(0)) if m else {}
+            for name, sec in guess.items():
+                if name in left and sec in WICS26:
+                    out[name] = {"sector": sec, "source": "Grok"}
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
+# ---------------------------------------------------------------------------
 # 경제지표 (EODHD)
 # ---------------------------------------------------------------------------
 
@@ -1298,6 +1400,18 @@ def register(app: FastAPI, require_user, has_feature, connect) -> None:
         if not _env("DART_API_KEY"):
             return {"skipped": "DART_API_KEY 없음"}
         return sync_dart_ir(connect, 30)
+
+    @app.post("/api/sectors/auto")
+    async def api_sectors_auto(request: Request) -> Any:
+        """종목명 목록 → WICS 26 업종 (DART 업종코드, 없으면 Grok). 저장은 화면이 한다."""
+        require_user(request)
+        data = await request.json()
+        names = [str(x) for x in (data or {}).get("companies", []) if isinstance(x, str)][:300]
+        if not (_env("DART_API_KEY") or _env("XAI_API_KEY")):
+            return {"sectors": {}, "detail": "DART_API_KEY 또는 XAI_API_KEY 가 있어야 자동 지정할 수 있습니다."}
+        import anyio
+
+        return {"sectors": await anyio.to_thread.run_sync(lambda: auto_sectors(connect, names))}
 
     # --- 경제지표 -----------------------------------------------------------
 

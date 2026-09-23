@@ -933,3 +933,7 @@
 .md .md-table th, .md .md-table td { border: 1px solid var(--border); padding: 5px 8px; text-align: left; }
 .md .md-table th { background: var(--surface-sunken); }
 .md .note-ref { border: 1px solid var(--primary); border-radius: 10px; background: var(--surface); color: var(--primary); font-size: 11px; padding: 0 6px; cursor: pointer; }
+
+.sector-edit-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.sector-edit-tools .input { flex: 1 1 180px; }
+.sector-auto { font-style: normal; font-size: 10.5px; padding: 0 5px; border-radius: 4px; background: var(--surface-sunken); color: var(--text-muted); margin-left: 4px; }

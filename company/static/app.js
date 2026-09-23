@@ -510,10 +510,10 @@
 
   // 노트 화면에서 정한 종목 → 섹터 (모음 company-sectors)
   const sectorStore = K.collection("company-sectors");
-  const SECTOR_LIST = ["반도체", "2차전지", "자동차", "IT·인터넷", "게임·엔터", "바이오·헬스케어", "조선·기계", "방산·우주", "화학·에너지", "철강·소재",
-    "건설·부동산", "금융", "소비재·유통", "통신·미디어", "운송·물류", "기타"];
+  const SECTOR_LIST = K.SECTORS; // WICS 26 (S.E 와 같은 기준)
   let sectorRows = [];
-  const noteSector = (name) => (sectorRows.find((r) => r.company === name) || {}).sector || "";
+  const savedSector = (name) => K.sectorNorm((sectorRows.find((r) => r.company === name) || {}).sector || "");
+  const noteSector = (name) => savedSector(name) || K.sectorGuess(name);
 
   function renderCompany() {
     const c = current;

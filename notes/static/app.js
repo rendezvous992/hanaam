@@ -366,14 +366,43 @@
   const EMPTY_STATE = { company: "", category: "", q: "", from: "", to: "", type: "", author: "", review: false, sectors: [], page: 1 };
 
   /* ---------- 섹터: 종목 → 섹터 (모든 노트가 같은 표를 쓴다, 모음 "company-sectors") ---------- */
-  const SECTORS = ["반도체", "2차전지", "자동차", "IT·인터넷", "게임·엔터", "바이오·헬스케어", "조선·기계", "방산·우주", "화학·에너지", "철강·소재",
-    "건설·부동산", "금융", "소비재·유통", "통신·미디어", "운송·물류", "기타"];
+  // WICS 26개 업종 (S.E 와 같은 기준, static/kit.js)
+  const SECTORS = window.Kit ? window.Kit.SECTORS : [];
   const NO_SECTOR = "미지정";
   const sectorStore = window.Kit ? window.Kit.collection("company-sectors") : null;
   let sectorMap = new Map(); // 종목명 → { id, sector }
+  // 저장한 값 → 없으면 기본 분류(주요 상장사) → 없으면 미지정
+  function savedSector(company) {
+    const v = sectorMap.get(company);
+    return v ? window.Kit.sectorNorm(v.sector) : "";
+  }
+  function sectorFor(company) {
+    return savedSector(company) || (window.Kit ? window.Kit.sectorGuess(company) : "") || "";
+  }
   function sectorOf(n) {
-    const v = sectorMap.get(n.company);
-    return (v && v.sector) || NO_SECTOR;
+    return sectorFor(n.company) || NO_SECTOR;
+  }
+  // 서버 모드: 기본 분류에도 없는 종목은 서버(DART 업종코드 → WICS, 없으면 Grok)로 한 번에 정해 저장한다
+  let autoTried = false;
+  async function autoAssignSectors(force) {
+    if (!serverApi || (autoTried && !force)) return 0;
+    autoTried = true;
+    const names = Array.from(new Set(notes.map((n) => n.company).filter((c) => c && c !== "미지정" && !sectorFor(c))));
+    if (!names.length) return 0;
+    try {
+      const out = await serverApi("POST", "/api/sectors/auto", { companies: names.slice(0, 200) });
+      let n = 0;
+      for (const [company, v] of Object.entries(out.sectors || {})) {
+        if (v && v.sector && SECTORS.includes(v.sector)) {
+          await setSector(company, v.sector);
+          n++;
+        }
+      }
+      if (n) render();
+      return n;
+    } catch (e) {
+      return 0;
+    }
   }
   async function loadSectors() {
     if (!sectorStore) return;
@@ -387,7 +416,7 @@
   async function setSector(company, sector) {
     if (!sectorStore || !company || company === "미지정") return;
     const cur = sectorMap.get(company);
-    if ((cur ? cur.sector : "") === sector) return;
+    if ((cur ? cur.sector : "") === sector && cur) return;
     if (cur && !sector) {
       await sectorStore.remove(cur.id);
       sectorMap.delete(company);
@@ -1284,7 +1313,7 @@
       "</div>" +
       '<div class="field"><span class="field__label">분류 <em class="required">*</em></span><div class="chip-group">' + categoryChips("category", n.category) + "</div></div>" +
       '<label class="field"><span class="field__label">섹터 <span class="field__label-note">— 종목마다 한 번만 정하면 그 종목의 모든 노트에 적용됩니다</span></span>' +
-      '<select class="input" name="sector">' + sectorOptions(n.company ? (sectorMap.get(n.company) || {}).sector || "" : "") + "</select></label>" +
+      '<select class="input" name="sector">' + sectorOptions(n.company ? sectorFor(n.company) : "") + "</select></label>" +
       '<div class="field-row field-row--three">' +
       '<label class="field"><span class="field__label">유형</span><select class="input" name="type">' +
       Array.from(new Set(TYPES.concat(n.type ? [n.type] : [])))
@@ -1400,6 +1429,11 @@
     });
 
     // --- 링크 가져오기
+    form.addEventListener("change", (e) => {
+      if (e.target.name !== "company") return;
+      const guess = sectorFor(e.target.value.trim());
+      if (guess && !f("sector").value) f("sector").value = guess;
+    });
     form.addEventListener("input", (e) => {
       if (e.target.name !== "body") return;
       const b = form.querySelector('[data-act="ai-body"]');
@@ -2375,11 +2409,14 @@
       size: "modal--wide",
       html:
         '<form class="modal__body" novalidate>' +
-        '<p class="hint">한 번 정하면 그 종목의 모든 노트가 해당 섹터로 묶입니다. 섹터가 없는 종목만 보려면 위 체크에서 ‘미지정’을 고르세요.</p>' +
-        '<input class="input input--compact" data-sector-find placeholder="종목 찾기" style="margin:10px 0">' +
+        '<p class="hint">WICS 26개 업종 기준입니다. <b>자동</b> 표시는 기본 분류로 채운 값이라 저장하지 않아도 적용되며, 바꾸고 저장하면 그 값이 우선합니다.</p>' +
+        '<div class="sector-edit-tools"><input class="input input--compact" data-sector-find placeholder="종목 찾기">' +
+        '<button type="button" class="btn btn--ghost btn--sm" data-sector-auto>미지정 자동 지정</button>' +
+        '<label class="btn btn--ghost btn--sm">S.E 목록 CSV 올리기<input type="file" accept=".csv,text/csv" data-sector-csv hidden></label></div>' +
         '<div class="sector-edit-list">' +
         (companies.length
-          ? companies.map((c) => '<label class="sector-edit-row" data-name="' + esc(c.toLowerCase()) + '"><span>' + esc(c) + '</span><select class="input input--compact" data-company="' + esc(c) + '">' + sectorOptions((sectorMap.get(c) || {}).sector || "") + "</select></label>").join("")
+          ? companies.map((c) => '<label class="sector-edit-row" data-name="' + esc(c.toLowerCase()) + '"><span>' + esc(c) + (!savedSector(c) && sectorFor(c) ? ' <em class="sector-auto">자동</em>' : "") +
+              '</span><select class="input input--compact" data-company="' + esc(c) + '">' + sectorOptions(sectorFor(c)) + "</select></label>").join("")
           : '<p class="hint">아직 노트가 없습니다.</p>') +
         "</div>" +
         '<div class="modal__footer"><div class="modal__footer-right"><button type="button" class="btn btn--ghost" data-close>닫기</button><button type="submit" class="btn btn--primary">저장</button></div></div></form>',
@@ -2387,6 +2424,46 @@
     const box = m.modal;
     const form = box.querySelector("form");
     box.querySelector("[data-close]").addEventListener("click", () => m.close());
+    box.querySelector("[data-sector-auto]").addEventListener("click", async (e) => {
+      const b = e.currentTarget;
+      if (!serverApi) return toast("기본 분류에 없는 종목의 자동 지정은 서버(로그인) 모드에서 DART·Grok 으로 합니다.", true);
+      b.disabled = true;
+      b.textContent = "DART 업종으로 찾는 중…";
+      const n = await autoAssignSectors(true);
+      b.disabled = false;
+      b.textContent = "미지정 자동 지정";
+      toast(n ? n + "개 종목의 섹터를 자동으로 정했습니다." : "새로 정할 수 있는 종목이 없었습니다. (DART_API_KEY 또는 XAI_API_KEY 필요)");
+      if (n) {
+        m.close(true);
+        openSectorEditor();
+      }
+    });
+    box.querySelector("[data-sector-csv]").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      let text = await file.text();
+      if (text.includes("\ufffd")) text = new TextDecoder("euc-kr").decode(await file.arrayBuffer());
+      const rows = window.Kit.parseCsv(text).filter((r) => r.length >= 2);
+      const head = rows[0].map((h) => String(h).trim());
+      let ni = head.findIndex((h) => /종목명|기업|회사|name/i.test(h));
+      let si = head.findIndex((h) => /섹터|업종|sector|wics/i.test(h));
+      const body = ni >= 0 && si >= 0 ? rows.slice(1) : rows;
+      if (ni < 0 || si < 0) { ni = 0; si = 1; }
+      let n = 0;
+      const skipped = [];
+      for (const r of body) {
+        const name = String(r[ni] || "").trim();
+        const sec = window.Kit.sectorNorm(String(r[si] || "").trim().replace(/\s*,\s*/g, ","));
+        if (!name || !sec) continue;
+        if (!SECTORS.includes(sec)) { skipped.push(sec); continue; }
+        try { await setSector(name, sec); n++; } catch (err) { /* 한 줄 실패는 건너뛴다 */ }
+      }
+      toast(n + "개 종목 섹터를 넣었습니다." + (skipped.length ? " WICS 26 이름이 아닌 값 " + skipped.length + "건은 건너뛰었습니다 (예: " + skipped[0] + ")." : ""), !n);
+      m.close(true);
+      render();
+      openSectorEditor();
+    });
     box.querySelector("[data-sector-find]").addEventListener("input", (e) => {
       const q = e.target.value.trim().toLowerCase();
       box.querySelectorAll(".sector-edit-row").forEach((r) => (r.hidden = q && !r.getAttribute("data-name").includes(q)));
@@ -2399,7 +2476,7 @@
       try {
         for (const sel of form.querySelectorAll("select[data-company]")) {
           const c = sel.getAttribute("data-company");
-          if (((sectorMap.get(c) || {}).sector || "") !== sel.value) {
+          if (savedSector(c) !== sel.value) {
             await setSector(c, sel.value);
             changed++;
           }
@@ -2576,5 +2653,6 @@
     await loadSectors();
     render();
     openFromHash();
+    autoAssignSectors(false);
   })();
 })();

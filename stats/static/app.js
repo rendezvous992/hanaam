@@ -167,8 +167,8 @@
       $("#st-dept").hidden = true;
     }
     const sectors = await K.collection("company-sectors").list().catch(() => []);
-    const map = new Map(sectors.map((r) => [r.company, r.sector]));
-    sectorOf = (c) => map.get(c) || "미지정";
+    const map = new Map(sectors.map((r) => [r.company, K.sectorNorm(r.sector)]));
+    sectorOf = (c) => map.get(c) || K.sectorGuess(c) || "미지정";
     notes = await K.readNotes();
     render();
   });
