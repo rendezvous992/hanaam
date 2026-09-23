@@ -1,0 +1,72 @@
+@charset "utf-8";
+
+.settings-page { max-width: 1060px; }
+
+.settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 26px; }
+
+.settings-heading h1 { margin: 0px 0px 8px; color: rgb(23, 58, 53); font-size: 27px; letter-spacing: -0.04em; }
+
+.settings-heading p { margin: 0px; color: rgb(113, 130, 121); font-size: 13px; }
+
+.settings-card { background: rgb(255, 255, 255); border: 1px solid rgb(220, 230, 225); border-radius: 12px; padding: 28px; box-shadow: rgba(25, 63, 52, 0.02) 0px 3px 12px; }
+
+.settings-card-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+
+.settings-kicker { color: rgb(114, 140, 127); font-size: 11px; }
+
+.settings-card-head h2 { margin: 6px 0px 0px; color: rgb(36, 62, 53); font-size: 21px; }
+
+.settings-state { background: rgb(241, 245, 243); color: rgb(107, 124, 115); border-radius: 20px; font-size: 11px; padding: 7px 12px; white-space: nowrap; }
+
+.settings-state.is-enabled { background: rgb(227, 243, 236); color: rgb(8, 117, 103); }
+
+.settings-intro, .settings-explain { color: rgb(89, 111, 99); line-height: 1.8; font-size: 13px; margin: 20px 0px; }
+
+.settings-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px 16px; border-radius: 8px; background: rgb(240, 248, 244); border: 1px solid rgb(225, 239, 231); font-size: 12px; color: rgb(39, 114, 100); }
+
+.settings-scope span { color: rgb(101, 132, 119); }
+
+.settings-check { display: flex; align-items: center; gap: 8px; color: rgb(56, 91, 75); font-size: 13px; margin: 0px 0px 16px; }
+
+.settings-check input { accent-color: rgb(0, 133, 123); width: 16px; height: 16px; }
+
+.settings-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+.settings-link-area { margin-top: 25px; padding-top: 25px; border-top: 1px solid rgb(232, 238, 234); }
+
+.settings-link-area > label { display: block; font-size: 12px; font-weight: 600; color: rgb(52, 93, 77); margin-bottom: 10px; }
+
+.settings-link-row { display: grid; grid-template-columns: minmax(0px, 1fr) auto auto; gap: 8px; }
+
+.settings-link-row input { width: 100%; min-width: 0px; border: 1px solid rgb(212, 226, 218); border-radius: 7px; padding: 10px 12px; color: rgb(41, 77, 61); background: rgb(247, 250, 248); font: 12px ui-monospace, monospace; }
+
+.settings-link-row input:focus { outline: rgb(190, 225, 213) solid 2px; }
+
+.settings-note { color: rgb(123, 137, 129); font-size: 11px; line-height: 1.8; margin: 10px 0px 16px; }
+
+.settings-text-button { padding: 6px 0px; border: 0px; background: transparent; color: rgb(95, 120, 107); font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+.settings-feedback { background: rgb(237, 247, 241); color: rgb(39, 103, 78); border-radius: 7px; padding: 11px 14px; font-size: 12px; line-height: 1.6; margin: 20px 0px 0px; }
+
+.settings-feedback.is-error { color: rgb(159, 49, 49); background: rgb(253, 241, 240); }
+
+.settings-help { margin-top: 28px; border-top: 1px solid rgb(229, 238, 232); padding-top: 20px; color: rgb(105, 126, 114); font-size: 12px; line-height: 1.8; }
+
+.settings-help summary { font-weight: 600; color: rgb(52, 91, 71); cursor: pointer; }
+
+.settings-help ol { padding-left: 23px; }
+
+.settings-help li { margin: 8px 0px; }
+
+.settings-help a { color: rgb(8, 119, 108); }
+
+.settings-page [hidden] { display: none !important; }
+
+.settings-page button:disabled { cursor: wait; opacity: 0.55; }
+
+@media (max-width: 600px) {
+  .settings-heading { flex-direction: column; align-items: flex-start; gap: 15px; }
+  .settings-card { padding: 20px 16px; }
+  .settings-link-row { grid-template-columns: 1fr 1fr; }
+  .settings-link-row input { grid-column: 1 / -1; }
+}

@@ -3,7 +3,7 @@
   "framework": null,
   "trailingSlash": true,
   "redirects": [
-    { "source": "/", "destination": "/notes/", "permanent": false }
+
   ],
   "headers": [
     {

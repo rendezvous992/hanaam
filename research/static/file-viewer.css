@@ -1,0 +1,124 @@
+@charset "utf-8";
+
+.reference-filters { display: flex; gap: 5px; flex-wrap: wrap; margin: 0px 0px 10px; }
+
+.reference-filter { border: 1px solid rgb(220, 229, 228); background: rgb(255, 255, 255); color: rgb(82, 103, 99); border-radius: 14px; font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 11px; padding: 4px 9px; cursor: pointer; }
+
+.reference-filter[aria-pressed="true"] { background: rgb(230, 244, 241); border-color: rgb(0, 133, 123); color: rgb(0, 109, 99); font-weight: 700; }
+
+.reference-item .file-badge { display: inline-flex; align-items: center; width: auto; border-radius: 4px; padding: 2px 6px; margin: 0px 0px 5px; background: rgb(238, 242, 246); color: rgb(82, 98, 116); font-size: 10px; font-weight: 800; letter-spacing: 0.03em; }
+
+.reference-item .file-badge--pdf { background: rgb(255, 240, 239); color: rgb(182, 64, 53); }
+
+.reference-item .file-badge--json { background: rgb(237, 243, 255); color: rgb(51, 93, 170); }
+
+.reference-item .file-badge--table { background: rgb(233, 245, 239); color: rgb(34, 120, 78); }
+
+.reference-item .file-badge--image { background: rgb(243, 236, 251); color: rgb(121, 81, 160); }
+
+.note-modal--source .note-modal__card { inset: 24px auto 24px 50%; transform: translateX(-50%); width: min(1180px, -48px + 100vw); }
+
+.note-modal--expanded .note-modal__card { inset: 10px; transform: none; width: auto; }
+
+.note-modal__head-actions { display: flex; align-items: center; flex-shrink: 0; gap: 6px; }
+
+.note-modal__body { overscroll-behavior: contain; }
+
+.note-modal__link { cursor: pointer; }
+
+.note-modal__link:disabled { opacity: 0.4; cursor: default; }
+
+.note-modal .note-modal__link { color: rgb(0, 109, 99); }
+
+.note-modal__link:focus-visible, .reference-filter:focus-visible, .json-branch > summary:focus-visible { outline: rgb(0, 133, 123) solid 2px; outline-offset: 2px; }
+
+.note-modal__foot { align-items: center; }
+
+.file-view-switch, .pdf-toolbar, .json-table-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.file-view-switch { margin-right: auto; }
+
+.file-view-switch [aria-pressed="true"] { background: rgb(230, 244, 241); border-color: rgb(0, 133, 123); color: rgb(0, 109, 99); }
+
+.file-notice { padding: 14px 16px; border-radius: 6px; background: rgb(242, 246, 248); color: rgb(82, 98, 116); font-size: 13px; line-height: 1.7; }
+
+.json-fields { min-width: 0px; }
+
+.json-field { display: grid; grid-template-columns: minmax(100px, 180px) minmax(0px, 1fr); gap: 18px; padding: 13px 4px; border-bottom: 1px solid rgb(231, 237, 236); }
+
+.json-key { overflow-wrap: anywhere; color: rgb(64, 93, 87); font-size: 13px; }
+
+.json-value { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.85; }
+
+.json-value--number, .json-value--boolean { color: rgb(8, 111, 101); font-variant-numeric: tabular-nums; }
+
+.json-value--null, .json-empty { color: rgb(137, 150, 148); }
+
+.json-branch { margin: 8px 0px; border: 1px solid rgb(221, 232, 229); border-radius: 7px; overflow: hidden; }
+
+.json-branch > summary { cursor: pointer; padding: 12px 14px; background: rgb(245, 249, 248); }
+
+.json-branch > summary strong { font-weight: 650; }
+
+.json-branch > summary small { margin-left: 10px; color: rgb(112, 130, 124); font-weight: 400; }
+
+.json-branch > .json-fields { padding: 2px 14px 10px; }
+
+.json-more { margin-top: 12px; }
+
+.json-code { margin: 0px; padding: 16px; background: rgb(246, 248, 250); border: 1px solid rgb(228, 233, 238); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px / 1.8 ui-monospace, SFMono-Regular, Consolas, monospace; color: rgb(38, 59, 80); tab-size: 2; }
+
+.json-table-controls { margin-bottom: 12px; color: rgb(96, 117, 112); font-size: 12px; }
+
+.preview-table th { position: sticky; top: 0px; z-index: 1; }
+
+.preview-table .json-field { display: block; padding: 8px 0px; }
+
+.preview-table .json-key { display: block; }
+
+.preview-table .json-value { font-size: 12px; }
+
+.preview-table td { min-width: 110px; }
+
+.file-body--pdf { padding: 0px; overflow: hidden; display: grid; grid-template-rows: auto minmax(0px, 1fr); background: rgb(232, 237, 239); }
+
+.pdf-scroll { grid-row: 2; min-height: 0px; overflow: auto; padding: 20px; overscroll-behavior: contain; }
+
+.pdf-page { position: relative; margin: 0px auto; background: white; box-shadow: rgba(30, 41, 59, 0.14) 0px 2px 12px; }
+
+.pdf-canvas { display: block; }
+
+.pdf-status { color: rgb(96, 117, 112); font-size: 12px; padding: 6px 18px; background: rgb(242, 246, 245); }
+
+.pdf-status:empty { display: none; }
+
+.pdf-toolbar { margin-right: auto; font-size: 12px; color: rgb(82, 103, 99); }
+
+.pdf-page-input { width: 58px; min-height: 30px; padding: 4px 6px; border: 1px solid rgb(203, 217, 213); border-radius: 5px; font: inherit; text-align: center; background: white; color: rgb(38, 59, 53); }
+
+.pdf-zoom { min-height: 30px; border: 1px solid rgb(203, 217, 213); border-radius: 5px; padding: 4px 7px; color: rgb(38, 59, 53); background: white; font: inherit; }
+
+.file-image { display: block; max-width: 100%; height: auto; margin: 0px auto; }
+
+.pdf-page .textLayer { position: absolute; inset: 0px; overflow: clip; opacity: 1; line-height: 1; letter-spacing: normal; word-spacing: normal; text-align: initial; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0px 0px; --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
+
+.pdf-page .textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0px 0px; user-select: text; }
+
+.pdf-page .textLayer > :not(.markedContent), .pdf-page .textLayer .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height)); --scale-x: 1; --rotate: 0deg; transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+
+.pdf-page .textLayer .markedContent { display: contents; }
+
+.pdf-page .textLayer ::selection { background: rgba(0, 133, 123, 0.25); }
+
+@media (max-width: 760px) {
+  .note-modal--source .note-modal__card, .note-modal--expanded .note-modal__card { inset: 8px; width: auto; transform: none; border-radius: 8px; }
+  .note-modal__head { padding: 12px; gap: 8px; }
+  .note-modal__head h2 { font-size: 15px; }
+  .note-modal__head-actions { gap: 4px; }
+  #note-modal-size { display: none; }
+  .note-modal__foot { padding: 10px 12px; gap: 6px; }
+  .file-view-switch, .pdf-toolbar { width: 100%; }
+  .json-field { grid-template-columns: minmax(0px, 1fr); gap: 4px; }
+  .json-branch > .json-fields { padding-left: 10px; padding-right: 10px; }
+  .pdf-scroll { padding: 16px 20px; }
+}

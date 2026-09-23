@@ -1,0 +1,30 @@
+@charset "utf-8";
+
+.home, .market, .mkt { --up: #d24350; --down: var(--doing); --up-soft: rgba(229, 72, 77, 0.12); --down-soft: rgba(37, 99, 235, 0.12); --ease: cubic-bezier(0.16, 1, 0.3, 1); --pv-bg: #f3f4f8; --pv-surface: #fff; --pv-surface-2: #f6f7fa; --pv-surface-3: #edeff4; --pv-line: #e7e9f0; --pv-line-str: #d7dae4; --pv-text: #171a22; --pv-text-2: #5a6270; --pv-text-3: #98a0ae; --pv-brand: #5b63d6; --pv-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 3px 10px rgba(16, 24, 40, 0.035); --pv-shadow-lg: 0 4px 12px rgba(16, 24, 40, 0.06), 0 10px 30px rgba(16, 24, 40, 0.05); }
+
+body { background: radial-gradient(1200px 520px at 82% -12%, rgba(91, 99, 214, 0.055), transparent 60%),
+              var(--bg); color: rgb(23, 26, 34); line-height: 1.5; letter-spacing: -0.01em; font-feature-settings: "palt"; }
+
+.site-header { background: rgba(255, 255, 255, 0.78); backdrop-filter: saturate(160%) blur(18px); border-bottom: 1px solid var(--pv-line); }
+
+.home, .mkt { max-width: 1440px; margin: 0px auto; padding: 24px 28px 60px; }
+
+.card { background: var(--pv-surface); border: 1px solid var(--pv-line); border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: var(--pv-shadow); transition: box-shadow 0.35s var(--ease), transform 0.35s var(--ease); }
+
+.card:hover { box-shadow: var(--pv-shadow-lg); transform: translateY(-2px); }
+
+.card__head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px; margin-bottom: 14px; }
+
+.card__title { margin: 0px; font-size: 16px; font-weight: 700; color: var(--text-strong); letter-spacing: -0.01em; white-space: nowrap; }
+
+.card__meta { font-size: 13px; font-weight: 500; color: var(--pv-text-3); }
+
+.card__link { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--pv-text-3); text-decoration: none; }
+
+.card__link:hover { color: var(--primary); }
+
+.card__empty { margin: 0px; padding: 24px 0px; text-align: center; font-size: 13px; color: var(--pv-text-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  .home *, .home ::before, .home ::after, .market *, .market ::before, .market ::after, .mkt *, .mkt ::before, .mkt ::after { animation: auto ease 0s 1 normal none running none !important; transition-duration: 0.01ms !important; }
+}

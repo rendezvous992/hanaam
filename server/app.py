@@ -24,7 +24,6 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
-from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("HANA_DATA_DIR", ROOT / "data")).resolve()
@@ -93,6 +92,23 @@ CREATE TABLE IF NOT EXISTS saved_answers (
 );
 CREATE INDEX IF NOT EXISTS idx_files_note ON files(note_id);
 CREATE INDEX IF NOT EXISTS idx_saved_user ON saved_answers(user_id);
+CREATE TABLE IF NOT EXISTS records (
+  collection TEXT NOT NULL,
+  id TEXT NOT NULL,
+  data TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT,
+  PRIMARY KEY (collection, id)
+);
+CREATE TABLE IF NOT EXISTS blobs (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  mime TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
 """
 
 
@@ -338,28 +354,6 @@ def _quote(value: str) -> str:
     return quote(value, safe="/")
 
 
-@app.get("/", include_in_schema=False)
-def root() -> Response:
-    return RedirectResponse("/notes/", status_code=303)
-
-
-@app.get("/notes", include_in_schema=False)
-def notes_no_slash() -> Response:
-    return RedirectResponse("/notes/", status_code=303)
-
-
-@app.get("/notes/", include_in_schema=False)
-@app.get("/notes/index.html", include_in_schema=False)
-def notes_page(request: Request) -> Response:
-    return _page(ROOT / "notes" / "index.html", request)
-
-
-@app.get("/notes/saved.html", include_in_schema=False)
-@app.get("/notes/saved", include_in_schema=False)
-def saved_page(request: Request) -> Response:
-    return _page(ROOT / "notes" / "saved.html", request)
-
-
 @app.get("/login", include_in_schema=False)
 def login_page(request: Request) -> Response:
     if session_user(request) is not None:
@@ -371,7 +365,7 @@ def _safe_next(value: Optional[str]) -> str:
     # 로그인 뒤 이동할 주소는 이 사이트 안쪽 경로만 허용
     if value and value.startswith("/") and not value.startswith("//") and "\\" not in value:
         return value
-    return "/notes/"
+    return "/"
 
 
 # --- 인증 API ---------------------------------------------------------------
@@ -633,13 +627,276 @@ def api_delete_saved(item_id: str, request: Request) -> dict[str, Any]:
     return {"ok": True}
 
 
+# --- 페이지별 데이터 모음 API (IR 캘린더·운용 보고 등) -------------------------
+# 모음 이름이 my- 로 시작하면 사용자마다 따로 저장한다 (예: AI 리서치 대화).
+
+MAX_RECORD_BYTES = 2_000_000
+
+
+def _collection_key(name: str, user: sqlite3.Row) -> str:
+    if not re.fullmatch(r"(my-)?[a-z0-9][a-z0-9_-]{0,39}", name):
+        raise HTTPException(404, "알 수 없는 모음입니다.")
+    return f"{name}:{user['id']}" if name.startswith("my-") else name
+
+
+def _record_out(row: sqlite3.Row) -> dict[str, Any]:
+    data = json.loads(row["data"])
+    data["id"] = row["id"]
+    return data
+
+
+async def _record_body(request: Request) -> dict[str, Any]:
+    raw = await request.body()
+    if len(raw) > MAX_RECORD_BYTES:
+        raise HTTPException(413, "한 번에 저장할 수 있는 크기를 넘었습니다.")
+    try:
+        data = json.loads(raw or b"{}")
+    except ValueError:
+        raise HTTPException(400, "잘못된 요청입니다.")
+    if not isinstance(data, dict):
+        raise HTTPException(400, "잘못된 요청입니다.")
+    return data
+
+
+@app.get("/api/c/{name}")
+def api_records(name: str, request: Request) -> list[dict[str, Any]]:
+    user = require_user(request)
+    key = _collection_key(name, user)
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM records WHERE collection = ? ORDER BY created_at", (key,)).fetchall()
+    return [_record_out(r) for r in rows]
+
+
+@app.post("/api/c/{name}", status_code=201)
+async def api_record_create(name: str, request: Request) -> dict[str, Any]:
+    user = require_user(request)
+    key = _collection_key(name, user)
+    data = await _record_body(request)
+    rid = str(data.get("id") or "")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", rid):
+        rid = secrets.token_hex(8)
+    data["id"] = rid
+    data.setdefault("createdBy", user["display_name"])
+    now = now_iso()
+    data.setdefault("createdAt", now)
+    with connect() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO records(collection, id, data, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+                (key, rid, json.dumps(data, ensure_ascii=False), user["id"], now),
+            )
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "같은 항목이 이미 있습니다.")
+    return data
+
+
+@app.put("/api/c/{name}/{rid}")
+async def api_record_update(name: str, rid: str, request: Request) -> dict[str, Any]:
+    user = require_user(request)
+    key = _collection_key(name, user)
+    data = await _record_body(request)
+    data["id"] = rid
+    with connect() as conn:
+        cur = conn.execute(
+            "UPDATE records SET data = ?, updated_at = ? WHERE collection = ? AND id = ?",
+            (json.dumps(data, ensure_ascii=False), now_iso(), key, rid),
+        )
+        if not cur.rowcount:
+            raise HTTPException(404, "항목을 찾을 수 없습니다.")
+    return data
+
+
+@app.delete("/api/c/{name}/{rid}")
+def api_record_delete(name: str, rid: str, request: Request) -> dict[str, Any]:
+    user = require_user(request)
+    key = _collection_key(name, user)
+    with connect() as conn:
+        row = conn.execute("SELECT created_by FROM records WHERE collection = ? AND id = ?", (key, rid)).fetchone()
+        if row is None:
+            raise HTTPException(404, "항목을 찾을 수 없습니다.")
+        if user["role"] != "admin" and row["created_by"] not in (None, user["id"]):
+            raise HTTPException(403, "등록한 사람이나 관리자만 삭제할 수 있습니다.")
+        conn.execute("DELETE FROM records WHERE collection = ? AND id = ?", (key, rid))
+    return {"ok": True}
+
+
+# --- 공용 파일(발표 자료·포스터 등) ----------------------------------------------
+
+@app.post("/api/blobs", status_code=201)
+async def api_blob_upload(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
+    user = require_user(request)
+    blob_id = secrets.token_hex(16)
+    path = FILES_DIR / blob_id
+    size = 0
+    try:
+        with path.open("wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(413, f"파일이 너무 큽니다 (최대 {MAX_UPLOAD_BYTES // 1024 // 1024}MB).")
+                out.write(chunk)
+    except BaseException:
+        delete_file_blob(blob_id)
+        raise
+    name = Path(file.filename or "file").name[:200] or "file"
+    mime = (file.content_type or "")[:100]
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO blobs(id, name, size, mime, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (blob_id, name, size, mime, user["id"], now_iso()),
+        )
+    return {"id": blob_id, "name": name, "size": size, "type": mime}
+
+
+# 브라우저 안에서 바로 보여 줘도 안전한 형식 (그 밖에는 내려받기)
+INLINE_TYPES = re.compile(r"^(image/(png|jpeg|gif|webp)|audio/.*|video/(mp4|webm)|application/pdf)$")
+
+
+@app.get("/api/blobs/{blob_id}")
+def api_blob_get(blob_id: str, request: Request, download: int = 0) -> Response:
+    require_user(request)
+    if not re.fullmatch(r"[0-9a-f]{32}", blob_id):
+        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM blobs WHERE id = ?", (blob_id,)).fetchone()
+    path = FILES_DIR / blob_id
+    if row is None or not path.exists():
+        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    inline = not download and bool(INLINE_TYPES.match(row["mime"] or ""))
+    return FileResponse(
+        path,
+        media_type=row["mime"] if inline else "application/octet-stream",
+        headers={"Cache-Control": "private, max-age=3600", "Content-Disposition": content_disposition(row["name"], inline)},
+    )
+
+
+@app.delete("/api/blobs/{blob_id}")
+def api_blob_delete(blob_id: str, request: Request) -> dict[str, Any]:
+    require_user(request)
+    with connect() as conn:
+        cur = conn.execute("DELETE FROM blobs WHERE id = ?", (blob_id,))
+    if cur.rowcount:
+        delete_file_blob(blob_id)
+    return {"ok": True}
+
+
+# --- 관리자: 사용자 관리 (계정 관리 화면) ------------------------------------------
+
+def require_admin(request: Request) -> sqlite3.Row:
+    user = require_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(403, "관리자만 할 수 있습니다.")
+    return user
+
+
+@app.get("/api/admin/users")
+def api_admin_users(request: Request) -> list[dict[str, Any]]:
+    require_admin(request)
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT u.id, u.username, u.display_name, u.role, u.created_at,
+                      (SELECT MAX(expires_at) FROM sessions s WHERE s.user_id = u.id) AS last_session
+               FROM users u ORDER BY u.username"""
+        ).fetchall()
+    return [
+        {"id": r["id"], "username": r["username"], "displayName": r["display_name"], "role": r["role"], "createdAt": r["created_at"]}
+        for r in rows
+    ]
+
+
+@app.post("/api/admin/users", status_code=201)
+async def api_admin_create_user(request: Request) -> dict[str, Any]:
+    require_admin(request)
+    data = await request.json()
+    username = str(data.get("username") or "").strip()
+    name = str(data.get("displayName") or "").strip() or username
+    role = "admin" if data.get("role") == "admin" else "member"
+    if not re.fullmatch(r"[A-Za-z0-9._@-]{2,60}", username):
+        raise HTTPException(400, "아이디는 영문·숫자·점(.)·밑줄(_)·하이픈(-)·@ 2~60자로 정해 주세요.")
+    temp = secrets.token_urlsafe(9)
+    with connect() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO users(username, display_name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+                (username, name[:50], role, hash_password(temp), now_iso()),
+            )
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "같은 아이디가 이미 있습니다.")
+    return {"ok": True, "username": username, "tempPassword": temp}
+
+
+@app.post("/api/admin/users/{user_id}/reset-password")
+def api_admin_reset(user_id: int, request: Request) -> dict[str, Any]:
+    me = require_admin(request)
+    temp = secrets.token_urlsafe(9)
+    with connect() as conn:
+        cur = conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(temp), user_id))
+        if not cur.rowcount:
+            raise HTTPException(404, "사용자를 찾을 수 없습니다.")
+        if user_id != me["id"]:
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    return {"ok": True, "tempPassword": temp}
+
+
+@app.put("/api/admin/users/{user_id}")
+async def api_admin_update(user_id: int, request: Request) -> dict[str, Any]:
+    me = require_admin(request)
+    data = await request.json()
+    role = data.get("role")
+    name = str(data.get("displayName") or "").strip()
+    with connect() as conn:
+        if role in ("admin", "member"):
+            if user_id == me["id"] and role != "admin":
+                raise HTTPException(400, "자기 자신의 관리자 권한은 내릴 수 없습니다.")
+            conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+        if name:
+            conn.execute("UPDATE users SET display_name = ? WHERE id = ?", (name[:50], user_id))
+    return {"ok": True}
+
+
+@app.delete("/api/admin/users/{user_id}")
+def api_admin_delete(user_id: int, request: Request) -> dict[str, Any]:
+    me = require_admin(request)
+    if user_id == me["id"]:
+        raise HTTPException(400, "자기 자신은 삭제할 수 없습니다.")
+    with connect() as conn:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    return {"ok": True}
+
+
 @app.get("/api/health", include_in_schema=False)
 def health() -> dict[str, Any]:
     return {"ok": True, "time": datetime.now(KST).isoformat(timespec="seconds")}
 
 
-# --- 정적 파일 (CSS·JS·아이콘: 로그인 없이 받아도 되는 것만) -------------------
+# --- 화면과 정적 파일 -----------------------------------------------------------
+# 화면(.html)은 로그인한 사람에게만, CSS·JS·아이콘은 누구에게나 내준다.
+# 저장소의 서버 코드·설치 스크립트·데이터 폴더는 절대 내보내지 않는다.
 
-app.mount("/notes/static", StaticFiles(directory=ROOT / "notes" / "static"), name="notes-static")
-app.mount("/company/static", StaticFiles(directory=ROOT / "company" / "static"), name="company-static")
-app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+PAGE_DIRS = {"notes", "calendar", "ndr", "events", "morning", "ops", "portfolio", "company", "research", "settings", "admin", "home", "static"}
+ASSET_TYPES = {".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon"}
+
+
+@app.get("/{path:path}", include_in_schema=False)
+def site(path: str, request: Request) -> Response:
+    parts = [p for p in path.split("/") if p]
+    if any(p.startswith(".") for p in parts) or (parts and parts[0] not in PAGE_DIRS):
+        raise HTTPException(404, "페이지를 찾을 수 없습니다.")
+    target = (ROOT / "/".join(parts)).resolve()
+    if ROOT not in target.parents and target != ROOT:
+        raise HTTPException(404, "페이지를 찾을 수 없습니다.")
+    if target.is_dir():
+        if not path.endswith("/") and path:
+            query = ("?" + request.url.query) if request.url.query else ""
+            return RedirectResponse("/" + path + "/" + query, status_code=308)
+        target = target / "index.html"
+    elif not target.exists() and target.with_suffix(".html").exists():
+        target = target.with_suffix(".html")
+    if not target.is_file():
+        raise HTTPException(404, "페이지를 찾을 수 없습니다.")
+    if target.suffix == ".html":
+        return _page(target, request)
+    media = ASSET_TYPES.get(target.suffix)
+    if media is None:
+        raise HTTPException(404, "페이지를 찾을 수 없습니다.")
+    return FileResponse(target, media_type=media, headers={"Cache-Control": "no-cache"})
