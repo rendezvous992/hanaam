@@ -1,0 +1,273 @@
+@charset "utf-8";
+
+:root { color-scheme: light; --primary: #00857b; --primary-hover: #006b63; --primary-soft: #e7f5f1; --primary-ring: rgba(0,133,123,.17); --bg: #f4f8f7; --surface: #fff; --surface-sunken: #eff5f2; --border: #deebe6; --border-strong: #c6dbd2; --text-strong: #173d37; --text: #39524c; --text-muted: #768e85; --radius-sm: 5px; --radius: 8px; --radius-lg: 10px; --header-height: 62px; --hana-sidebar-width: 238px; --pv-brand: #00857b; --accent: #007f73; }
+
+.hana-workspace { background: var(--bg); color: var(--text); }
+
+.hana-icon { width: 19px; height: 19px; flex: 0 0 auto; }
+
+.hana-shell { display: grid; grid-template-columns: var(--hana-sidebar-width) minmax(0,1fr); min-height: 100vh; overflow-x: clip; transition: grid-template-columns 0.18s; }
+
+.hana-sidebar { position: sticky; top: 0px; z-index: 90; width: var(--hana-sidebar-width); height: 100dvh; display: flex; flex-direction: column; align-self: start; padding: 0px 14px; border-right: 1px solid var(--border); background: rgb(255, 255, 255); transition: transform 0.18s; }
+
+.hana-brand { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-start; gap: 9px; min-height: 112px; padding: 25px 13px 19px; border-bottom: 1px solid var(--border); color: var(--text-muted); text-decoration: none; }
+
+.hana-brand img { display: block; width: 150px; height: 33px; object-fit: contain; }
+
+.hana-brand > span { margin-left: 33px; font: 600 9px / 1.3 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.18em; }
+
+.hana-nav { flex: 1 1 auto; min-height: 0px; overflow-y: auto; padding: 9px 0px 16px; scrollbar-width: thin; scrollbar-color: rgb(202, 221, 212) transparent; overscroll-behavior: contain; }
+
+.hana-nav-label { display: flex; align-items: center; gap: 8px; margin: 17px 11px 8px; color: rgb(108, 139, 127); font: 700 9px / 1.3 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }
+
+.hana-nav-label > span { font-size: 10px; font-weight: 400; letter-spacing: 0px; color: rgb(144, 166, 157); }
+
+.hana-nav-link { position: relative; display: flex; align-items: center; gap: 11px; min-height: 39px; margin: 3px 0px; padding: 9px 11px; border: 1px solid transparent; border-radius: 6px; color: rgb(88, 113, 104); text-decoration: none; cursor: pointer; list-style: none; }
+
+.hana-nav-link > span { flex: 1 1 0%; font-size: 12.5px; font-weight: 550; line-height: 1.4; }
+
+.hana-nav-link > .hana-icon { color: rgb(119, 145, 136); }
+
+.hana-nav-link:hover { color: var(--primary-hover); background: rgb(244, 248, 246); border-color: rgb(234, 241, 237); }
+
+.hana-nav-link.is-active { background: var(--primary-soft); border-color: rgb(212, 233, 223); color: var(--primary); }
+
+.hana-nav-link.is-active > span { font-weight: 750; }
+
+.hana-nav-link.is-active > .hana-icon { color: var(--primary); }
+
+.hana-nav-link.is-active::before { content: ""; position: absolute; left: -1px; width: 3px; height: 16px; border-radius: 0px 2px 2px 0px; background: var(--primary); }
+
+.hana-nav-group { min-width: 0px; }
+
+.hana-nav-group summary::-webkit-details-marker { display: none; }
+
+.hana-nav-chevron { flex: 0 0 auto; width: 13px; height: 13px; fill: none; stroke: currentcolor; stroke-width: 1.8; transition: transform 0.15s; }
+
+.hana-nav-group[open] > summary .hana-nav-chevron { transform: rotate(90deg); }
+
+.hana-nav-children { display: grid; gap: 2px; margin: 4px 6px 7px 20px; padding-left: 15px; border-left: 1px solid rgb(219, 233, 226); }
+
+.hana-nav-child { padding: 7px 8px; border-radius: 4px; color: rgb(120, 144, 134); font-size: 11.5px; line-height: 1.4; text-decoration: none; }
+
+.hana-nav-child:hover, .hana-nav-child.is-active { color: var(--primary); background: rgb(242, 248, 245); }
+
+.hana-nav-child.is-active { font-weight: 700; }
+
+.hana-sidebar-footer { flex: 0 0 auto; padding: 10px 3px 14px; border-top: 1px solid var(--border); background: rgb(255, 255, 255); }
+
+.hana-sidebar-fold { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px 11px; border: 0px; background: transparent; color: rgb(138, 161, 150); font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 10px; text-align: left; cursor: pointer; }
+
+.hana-sidebar-fold .hana-icon { width: 15px; height: 15px; }
+
+.hana-sidebar-fold kbd { margin-left: auto; font: 9px ui-monospace, monospace; color: rgb(165, 182, 174); }
+
+.hana-account { display: flex; align-items: center; gap: 10px; padding: 9px 6px; text-decoration: none; color: var(--text-strong); }
+
+.hana-user-avatar { display: grid; flex: 0 0 auto; place-items: center; width: 33px; height: 33px; border: 1px solid rgb(214, 233, 224); border-radius: 8px; background: var(--primary-soft); color: var(--primary); font-size: 13px; font-weight: 700; }
+
+.hana-account-copy { display: grid; flex: 1 1 0%; min-width: 0px; gap: 3px; }
+
+.hana-account-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
+
+.hana-account-copy small { color: var(--text-muted); font-size: 10px; }
+
+.hana-account > .hana-icon { width: 15px; height: 15px; color: rgb(145, 166, 156); }
+
+.hana-sidebar-footer form { margin: 0px; }
+
+.hana-signout { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 31px; border: 1px solid var(--border); border-radius: 5px; background: rgb(252, 254, 253); color: rgb(108, 131, 122); font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 10px; cursor: pointer; }
+
+.hana-signout .hana-icon { width: 13px; height: 13px; }
+
+.hana-signout:hover { color: var(--primary); border-color: rgb(180, 213, 198); }
+
+.hana-content, .site-main { min-width: 0px; }
+
+.hana-topbar { position: sticky; top: 0px; z-index: 40; display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: var(--header-height); padding: 10px 28px; border-top: 3px solid var(--primary); border-bottom: 1px solid var(--border); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); }
+
+.hana-topbar-heading { display: flex; align-items: center; gap: 18px; min-width: 0px; }
+
+.hana-menu-toggle { display: grid; flex: 0 0 auto; place-items: center; width: 30px; height: 30px; padding: 0px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: rgb(100, 132, 121); cursor: pointer; }
+
+.hana-menu-toggle:hover { border-color: var(--border); background: rgb(243, 248, 245); color: var(--primary); }
+
+.hana-menu-toggle .hana-icon { width: 17px; height: 17px; }
+
+.hana-breadcrumb { display: flex; align-items: center; gap: 13px; min-width: 0px; }
+
+.hana-breadcrumb > span { color: rgb(140, 163, 151); font: 600 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.1em; white-space: nowrap; }
+
+.hana-breadcrumb i { color: rgb(207, 223, 214); font-style: normal; }
+
+.hana-breadcrumb strong { font-size: 12px; font-weight: 600; color: rgb(76, 106, 94); white-space: nowrap; }
+
+.hana-topbar-meta { display: flex; align-items: center; gap: 18px; font-size: 11px; white-space: nowrap; }
+
+.hana-topbar-meta time { color: rgb(138, 160, 149); font-variant-numeric: tabular-nums; font-size: 10px; }
+
+.hana-topbar-meta > a { padding-left: 16px; border-left: 1px solid var(--border); color: rgb(90, 119, 105); text-decoration: none; }
+
+.hana-skip-link { position: fixed; top: -80px; left: 18px; z-index: 200; padding: 10px 18px; background: var(--primary); color: rgb(255, 255, 255); border-radius: 5px; }
+
+.hana-skip-link:focus { top: 12px; }
+
+.hana-workspace :is(a, button, summary):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+
+.site-main:focus { outline: none; }
+
+html[data-hana-sidebar="collapsed"] .hana-shell { grid-template-columns: 0px minmax(0px, 1fr); }
+
+html[data-hana-sidebar="collapsed"] .hana-sidebar { transform: translateX(-100%); visibility: hidden; }
+
+.hana-backdrop { display: none; }
+
+.hana-workspace .page { max-width: 1600px; padding: 30px 28px 56px; }
+
+.hana-workspace .hero__title { font-size: 25px; letter-spacing: -0.035em; }
+
+.hana-workspace :is(.home, .market, .mkt) { --pv-brand: #00857b; --pv-bg: #f4f8f7; --pv-line: #deebe6; --pv-line-str: #c6dbd2; --pv-text: #173d37; --pv-text-2: #597568; --pv-text-3: #89a094; --pv-surface-2: #f5f9f7; --pv-surface-3: #edf5f1; }
+
+.hana-workspace .home .card { border-radius: 9px; border-color: var(--border); padding: 20px; box-shadow: rgba(17, 63, 45, 0.024) 0px 2px 5px; }
+
+.hana-workspace .home .card:hover { transform: none; box-shadow: rgba(17, 63, 45, 0.04) 0px 3px 9px; }
+
+.hana-workspace .home .card__head { gap: 7px; min-height: 24px; padding-bottom: 13px; border-bottom: 1px solid rgb(237, 243, 239); }
+
+.hana-workspace .home .card__title { font-size: 13px; font-weight: 700; }
+
+.hana-workspace .home .card__meta, .hana-workspace .home .card__link { font-size: 10px; }
+
+.hana-workspace .home .card__empty { padding: 27px 0px; font-size: 12px; }
+
+.hana-workspace .sched--hero::before { background: var(--primary); }
+
+.hana-workspace .checks { background: rgb(0, 124, 113); color: rgb(255, 255, 255); }
+
+.hana-workspace .checks .card__head { border-color: rgba(255, 255, 255, 0.13); }
+
+.hana-workspace .checks :is(a, .card__title, .checks__label, .checks__count) { color: rgb(255, 255, 255); }
+
+.hana-workspace .signin { background: rgb(255, 255, 255); border-left: 1px solid var(--border); }
+
+.hana-workspace .signin__avatar img { object-fit: contain; padding: 5px; }
+
+.hana-welcome { display: flex; align-items: center; justify-content: space-between; gap: 25px; margin: 0px 0px 24px; padding: 26px 28px; border: 1px solid rgb(214, 231, 223); border-radius: 9px; background: linear-gradient(115deg, rgb(232, 244, 239), rgb(250, 253, 251) 82%); }
+
+.hana-eyebrow { color: var(--primary); font: 700 9px / 1.5 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.18em; }
+
+.hana-welcome h1 { margin: 8px 0px 10px; color: rgb(23, 76, 61); font-size: 27px; font-weight: 700; letter-spacing: -0.045em; }
+
+.hana-welcome p { margin: 0px; color: rgb(115, 142, 127); font-size: 12.5px; line-height: 1.7; }
+
+.hana-shortcut { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-height: 38px; padding: 0px 16px; border: 1px solid rgb(0, 133, 123); border-radius: 5px; background: rgb(0, 133, 123); color: rgb(255, 255, 255); font-size: 11px; font-weight: 600; text-decoration: none; white-space: nowrap; box-shadow: rgba(0, 133, 123, 0.07) 0px 4px 9px; }
+
+.hana-shortcut:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: rgb(255, 255, 255); }
+
+.hana-integration-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; padding: 0px 28px 28px; }
+
+.hana-integration-card { border: 1px solid var(--border); border-radius: 8px; padding: 22px; background: rgb(255, 255, 255); }
+
+.hana-integration-card h2 { font-size: 15px; }
+
+.hana-integration-card p { font-size: 12px; line-height: 1.7; }
+
+.hana-status { font-size: 11px; font-weight: 600; color: rgb(124, 149, 135); }
+
+.hana-status--ready { color: var(--primary); }
+
+.hana-workspace .admin { max-width: 1450px; padding: 28px 28px 56px; }
+
+.hana-workspace .admin__section > h2 { font-size: 14px; }
+
+.hana-workspace .admin .empty-state { min-height: 80px; padding: 24px; border: 1px dashed var(--border); border-radius: 6px; background: rgb(251, 253, 252); }
+
+.hana-workspace .admin .create-form { border-radius: 7px; padding: 18px; }
+
+.hana-workspace .admin-table { font-size: 12px; }
+
+.hana-workspace .admin-table th { background: rgb(238, 245, 241); color: rgb(94, 126, 108); font-size: 11px; }
+
+.hana-workspace .admin-table tbody tr:hover { background: rgb(248, 252, 250); }
+
+.hana-workspace .fold__head { padding: 16px 2px; }
+
+.auth-page { position: relative; min-height: 100dvh; padding: 40px 20px; overflow-x: clip; background: rgb(255, 255, 255); }
+
+.auth-page::before { content: ""; position: fixed; top: 0px; right: 0px; width: min(31vw, 420px); height: 4px; background: var(--primary); pointer-events: none; }
+
+.auth-page::after { content: ""; position: fixed; right: -130px; bottom: -150px; width: min(38vw, 460px); aspect-ratio: 1 / 1; border: 1px solid rgba(0, 133, 123, 0.09); border-radius: 50%; box-shadow: rgba(0, 133, 123, 0.016) 0px 0px 0px 42px, rgba(0, 133, 123, 0.01) 0px 0px 0px 84px; pointer-events: none; }
+
+.auth-card { position: relative; z-index: 1; width: min(100%, 390px); max-width: 430px; padding: 30px 24px; border: 0px; border-radius: 0px; background: transparent; box-shadow: none; }
+
+.auth-card__brand { display: flex; justify-content: center; margin: 0px 0px 35px; }
+
+.auth-card__logo { display: block; width: 150px; height: auto; object-fit: contain; mix-blend-mode: normal; }
+
+.auth-card__title { margin-bottom: 9px; color: var(--text-strong); font-size: 19px; font-weight: 650; text-align: center; letter-spacing: -0.03em; }
+
+.auth-card__lead { word-break: keep-all; color: rgb(131, 153, 140); font-size: 12px; line-height: 1.8; text-align: center; margin-bottom: 28px; }
+
+.auth-form { gap: 18px; }
+
+.auth-form .field { gap: 8px; }
+
+.auth-form .field__label { color: rgb(110, 137, 123); font-size: 11px; font-weight: 600; }
+
+.auth-form .input { min-height: 45px; border-color: rgb(203, 222, 211); border-radius: 4px; background: rgba(255, 255, 255, 0.79); color: rgb(37, 78, 60); }
+
+.auth-form .input:focus { border-color: var(--primary); background: rgb(255, 255, 255); }
+
+.auth-form .btn--primary { min-height: 45px; margin-top: 5px; border-radius: 4px; background: var(--primary); box-shadow: rgba(0, 133, 123, 0.11) 0px 8px 20px; font-size: 12px; font-weight: 650; }
+
+.auth-form .btn--primary:hover { background: var(--primary-hover); }
+
+.auth-foot { margin-top: 26px; padding-top: 18px; border-top: 1px solid rgb(219, 232, 223); color: rgb(138, 158, 145); font-size: 11px; }
+
+.auth-foot a { color: var(--primary); }
+
+@media (max-width: 1180px) {
+  .hana-topbar { padding: 10px 22px; }
+  .hana-breadcrumb > span { display: none; }
+  .hana-breadcrumb i { display: none; }
+  .hana-workspace .page { padding: 24px 22px 48px; }
+  .hana-welcome { padding: 23px; }
+  .hana-welcome h1 { font-size: 24px; }
+}
+
+@media (max-width: 900px) {
+  .hana-shell, html[data-hana-sidebar="collapsed"] .hana-shell { display: block; }
+  .hana-sidebar, html[data-hana-sidebar="collapsed"] .hana-sidebar { position: fixed; inset: 0px auto 0px 0px; width: 260px; transform: translateX(-100%); visibility: hidden; box-shadow: rgba(16, 59, 40, 0.09) 15px 0px 50px; }
+  .hana-mobile-open .hana-sidebar, html[data-hana-sidebar="collapsed"] .hana-mobile-open .hana-sidebar { transform: translateX(0px); visibility: visible; }
+  .hana-mobile-open { overflow: hidden; }
+  .hana-backdrop { position: fixed; display: block; inset: 0px; z-index: 80; width: 100%; height: 100%; padding: 0px; border: 0px; background: rgba(22, 61, 51, 0.36); backdrop-filter: blur(2px); }
+  .hana-topbar { padding: 10px 18px; }
+  .hana-topbar-heading { gap: 10px; }
+  .hana-workspace .page, .hana-workspace .admin { padding: 24px 20px 48px; }
+  .hana-integration-grid { padding: 0px 20px 24px; }
+}
+
+@media (max-width: 600px) {
+  :root { --header-height: 58px; }
+  .hana-topbar { gap: 10px; padding: 10px 14px; }
+  .hana-topbar-meta time { display: none; }
+  .hana-topbar-meta > a { padding-left: 0px; border: 0px; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+  .hana-workspace .page, .hana-workspace .admin { padding: 22px 16px 40px; }
+  .hana-welcome { display: block; padding: 22px 20px; margin-bottom: 18px; }
+  .hana-welcome h1 { font-size: 23px; }
+  .hana-welcome p { font-size: 12px; }
+  .hana-shortcut { margin-top: 18px; }
+  .hana-workspace .home .card { padding: 17px; }
+  .hana-integration-grid { padding: 0px 16px 20px; }
+  .auth-card { padding: 24px 10px; max-width: 330px; }
+  .auth-card__logo { width: 150px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hana-shell, .hana-sidebar, .hana-nav-chevron { transition: none; }
+}
+
+@media print {
+  .hana-sidebar, .hana-topbar, .hana-backdrop { display: none !important; }
+  .hana-shell, html[data-hana-sidebar="collapsed"] .hana-shell { display: block; }
+}
