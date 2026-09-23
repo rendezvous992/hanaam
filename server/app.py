@@ -1101,7 +1101,8 @@ def calendar_feed(token: str) -> Response:
 
 @app.get("/api/health", include_in_schema=False)
 def health() -> dict[str, Any]:
-    return {"ok": True, "db": "postgres" if IS_PG else ("none" if STATIC_ONLY else "sqlite"), "time": datetime.now(KST).isoformat(timespec="seconds")}
+    return {"ok": True, "db": "postgres" if IS_PG else ("none" if STATIC_ONLY else "sqlite"),
+            "ai": bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()), "time": datetime.now(KST).isoformat(timespec="seconds")}
 
 
 # 외부 데이터 연결 (시세·경제지표·DART·AI)

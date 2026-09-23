@@ -128,7 +128,7 @@
       .slice(0, 12)
       .map((x) => x.n);
     const refs = scored.map((n) => ({ type: "note", id: n.id, title: n.title, company: n.company, date: n.date, author: n.author || "" }));
-    const lines = ["> 서버 없이 열려 있어 AI 답변 대신 이 브라우저에 저장된 노트에서 찾은 내용을 보여 줍니다.", ""];
+    const lines = ["> " + setupHint().replace(/<[^>]+>/g, ""), ""];
     if (!scored.length) {
       lines.push("질문과 관련된 노트를 찾지 못했습니다. 기업명이나 핵심 단어를 넣어 다시 물어봐 주세요.");
     } else {
@@ -144,6 +144,18 @@
       });
     }
     return { answer: lines.join("\n"), refs, ai: false };
+  }
+
+  // 서버 모드가 아닐 때: 무엇이 빠져서 AI 를 못 쓰는지 알려 준다 (/api/health 는 DB 없이도 응답)
+  let health = null;
+  function setupHint() {
+    if (health && health.db === "none") {
+      return "<b>AI 답변이 꺼져 있습니다 — 데이터베이스가 연결되지 않았습니다.</b><br>" +
+        "Vercel 프로젝트 → Storage → Create Database → Neon 을 만들고 Connect 한 뒤" +
+        (health.ai ? "" : " Settings → Environment Variables 에 ANTHROPIC_API_KEY 를 넣고") +
+        " Redeploy 하세요. 그다음 /signup 에서 계정을 만들어 로그인하면 Claude 가 답합니다.<br>지금은 이 브라우저에 저장된 노트에서만 찾습니다.";
+    }
+    return "서버 없이 열려 있어 AI 답변 대신 이 브라우저에 저장된 노트에서만 찾습니다. 서버(로그인) 모드에서 Claude 가 답합니다.";
   }
 
   /* ---------- 대화 목록 ---------- */
@@ -243,7 +255,7 @@
           ? status.ai
             ? '<span style="font-size:12px">AI 연결됨 · 답변에 20초~2분쯤 걸립니다.</span>'
             : '<span style="font-size:12px">AI 가 아직 연결되지 않아 노트 검색 결과만 보여 줍니다. (관리자: ANTHROPIC_API_KEY)</span>'
-          : '<span style="font-size:12px">서버 없이 열려 있어 이 브라우저의 노트에서만 찾습니다.</span>') +
+          : '<span class="research-setup" style="display:block;margin:14px auto 0;max-width:560px;text-align:left;font-size:12.5px;line-height:1.8;padding:12px 14px;border:1px solid #f0d19a;border-radius:8px;background:#fff8ec;color:#7a4b00">' + setupHint() + "</span>") +
         "</div>";
     } else {
       list.innerHTML = msgs.map(msgHtml).join("");
@@ -685,6 +697,7 @@
   K.session().then(async (s) => {
     session = s;
     if (s.server) status = await s.api("GET", "/api/integrations").catch(() => ({ ai: false }));
+    else health = await fetch("/api/health").then((r) => (r.ok ? r.json() : null)).catch(() => null);
     try {
       await threads.list();
     } catch (err) {
