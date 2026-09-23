@@ -212,3 +212,13 @@ body { background: var(--bg); color: var(--text); font-family: "Pretendard Varia
 .segmented__btn:hover { color: var(--text-strong); }
 
 .segmented__btn.is-active { background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); }
+/* 공용 알림(토스트) — shell.js 의 toast() */
+.notice-toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 12px); z-index: 90; max-width: min(520px, -32px + 100vw); padding: 12px 18px; border-radius: 10px; background: var(--text-strong, #1f2330); color: rgb(255, 255, 255); font-size: 15px; line-height: 1.5; box-shadow: rgba(0, 0, 0, 0.22) 0px 8px 24px; opacity: 0; pointer-events: none; transition: opacity 0.18s, transform 0.18s; }
+
+.notice-toast--on { opacity: 1; transform: translate(-50%, 0px); }
+
+.notice-toast--error { background: rgb(179, 38, 30); }
+
+@media print {
+  .notice-toast { display: none !important; }
+}
