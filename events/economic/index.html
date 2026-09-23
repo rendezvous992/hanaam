@@ -104,9 +104,9 @@
 <button aria-controls="hana-navigation" aria-expanded="true" aria-label="메뉴 접기" class="hana-sidebar-fold" data-hana-toggle="" title="메뉴 접기 · Alt+S" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="m14 6-6 6 6 6m5-14v16"></path>
 </svg><span>메뉴 접기</span><kbd>Alt S</kbd></button>
-<a class="hana-account" data-hana-stub="" href="/account/">
-<span aria-hidden="true" class="hana-user-avatar">D</span>
-<span class="hana-account-copy"><strong>donghwi.kim</strong><small>계정 관리자 · 미지정</small></span>
+<a class="hana-account" href="/account/">
+<span aria-hidden="true" class="hana-user-avatar">사</span>
+<span class="hana-account-copy"><strong>사용자</strong><small>계정 관리자 · 미지정</small></span>
 <svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <circle cx="9" cy="8" r="3"></circle><path d="M3 20v-2a6 6 0 0 1 12 0v2m3-13v6m-3-3h6"></path>
 </svg>
@@ -124,7 +124,7 @@
 </svg></button>
 <span class="hana-breadcrumb"><strong>경제 캘린더</strong></span>
 </div>
-<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:24:16.889Z">2026. 09. 23. (수) 15:24 KST</time><a data-hana-stub="" href="/account/">donghwi.kim</a></div>
+<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:24:16.889Z">2026. 09. 23. (수) 15:24 KST</time><a href="/account/">사용자</a></div>
 </header>
 <main class="site-main" id="hana-main" tabindex="-1">
 <div class="page economic">
@@ -134,26 +134,27 @@
 </nav>
 <header class="economic-heading">
 <div><span class="economic-eyebrow">ECONOMIC CALENDAR</span><h1>경제 캘린더</h1><p>주요국의 경제지표 발표와 중앙은행 일정을 확인하세요.</p></div>
-<div class="economic-clock">발표 시각 <strong>한국 시간 · KST</strong></div>
+<div class="economic-side"><div class="economic-actions"><button class="btn btn--ghost btn--sm" id="eco-csv-import" type="button">CSV 가져오기</button><button class="btn btn--ghost btn--sm" id="eco-csv-export" type="button">CSV 내보내기</button><button class="btn btn--ghost btn--sm" id="eco-csv-sample" type="button">양식 받기</button><button class="btn btn--primary btn--sm" id="eco-add" type="button">+ 직접 추가</button></div><div class="economic-clock">발표 시각 <strong>한국 시간 · KST</strong></div></div>
 </header>
 <form class="economic-filters" method="get">
-<label>시작일<input class="input" name="start" required="" type="date" value="2026-09-23"/></label>
-<label>종료일<input class="input" name="end" required="" type="date" value="2026-09-29"/></label>
+<label>시작일<input class="input" name="start" required="" type="date" value=""/></label>
+<label>종료일<input class="input" name="end" required="" type="date" value=""/></label>
 <label>국가·지역<select class="input" name="country"><option value="">주요 6개국·지역 전체</option><option value="KR">한국</option><option value="US">미국</option><option value="CN">중국</option><option value="JP">일본</option><option value="EU">유로존</option><option value="GB">영국</option></select></label>
+<label>중요도<select class="input" name="impact"><option value="">전체</option><option value="high">높음만</option><option value="medium">보통 이상</option></select></label>
 <label class="economic-search">경제지표 검색<input class="input" maxlength="120" name="q" placeholder="CPI, 고용, 금리…" type="search" value=""/></label>
 <button class="btn btn--primary" type="submit">조회</button>
 </form>
 <div class="economic-range">
-<div class="economic-presets"><a href="/events/economic/?start=2026-09-23&amp;end=2026-09-23">오늘</a><a href="/events/economic/?start=2026-09-23&amp;end=2026-09-29">앞으로 7일</a><a href="/events/economic/?start=2026-09-30&amp;end=2026-10-06">그다음 7일</a></div>
-<span>조회 결과 <strong>0</strong>건</span>
+<div class="economic-presets"><a href="/events/economic/" data-preset="today">오늘</a><a href="/events/economic/" data-preset="next7">앞으로 7일</a><a href="/events/economic/" data-preset="after7">그다음 7일</a></div>
+<span>조회 결과 <strong id="eco-count">0</strong>건</span>
 </div>
-<div class="economic-updated is-stale">
-<span>수집 시점 기준 · 2026.09.10 12:13 KST · 최신 자료 갱신 필요</span>
-<span>수집 범위 09.09 09:00 ~ 09.18 08:59 KST</span>
+<div class="economic-updated" id="eco-status">
+<span id="eco-status-main">불러오는 중…</span>
+<span id="eco-status-range"></span>
 </div>
 <div aria-label="경제 캘린더 표, 좁은 화면에서 좌우로 스크롤할 수 있습니다" class="economic-table-wrap" tabindex="0">
 <table class="economic-table"><thead><tr><th scope="col">시각 KST</th><th scope="col">국가</th><th scope="col">경제지표·일정</th><th class="numeric" scope="col">발표치</th><th class="numeric" scope="col">예상치</th><th class="numeric" scope="col">이전치</th></tr></thead>
-<tbody><tr><td class="economic-empty" colspan="6">선택한 조건에 해당하는 수집 일정이 없습니다.<br/><small>날짜·국가 필터와 위의 수집 범위를 확인해 주세요.</small></td></tr></tbody>
+<tbody id="eco-body"><tr><td class="economic-empty" colspan="6">불러오는 중…</td></tr></tbody>
 </table>
 </div>
 <footer class="economic-footer"><p>발표치·예상치·이전치의 <b>—</b>는 값이 제공되지 않았다는 뜻입니다. 발표 예정 일정의 발표치는 숨깁니다. 수치는 공급자가 제공한 원값이며 단위 배율은 추가 변환하지 않습니다.</p><p>데이터: <a href="https://eodhd.com/financial-apis/economic-events-data-api" rel="noopener noreferrer" target="_blank">EODHD Economic Events</a> · 일정과 수치는 변경될 수 있습니다. 위 수집 시각 기준으로 확인하세요.</p></footer>

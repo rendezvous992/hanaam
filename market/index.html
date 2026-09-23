@@ -105,9 +105,9 @@
 <button aria-controls="hana-navigation" aria-expanded="true" aria-label="메뉴 접기" class="hana-sidebar-fold" data-hana-toggle="" title="메뉴 접기 · Alt+S" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="m14 6-6 6 6 6m5-14v16"></path>
 </svg><span>메뉴 접기</span><kbd>Alt S</kbd></button>
-<a class="hana-account" data-hana-stub="" href="/account/">
-<span aria-hidden="true" class="hana-user-avatar">D</span>
-<span class="hana-account-copy"><strong>donghwi.kim</strong><small>계정 관리자 · 미지정</small></span>
+<a class="hana-account" href="/account/">
+<span aria-hidden="true" class="hana-user-avatar">사</span>
+<span class="hana-account-copy"><strong>사용자</strong><small>계정 관리자 · 미지정</small></span>
 <svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <circle cx="9" cy="8" r="3"></circle><path d="M3 20v-2a6 6 0 0 1 12 0v2m3-13v6m-3-3h6"></path>
 </svg>
@@ -125,13 +125,13 @@
 </svg></button>
 <span class="hana-breadcrumb"><strong>시장</strong></span>
 </div>
-<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:31:03.324Z">2026. 09. 23. (수) 15:31 KST</time><a data-hana-stub="" href="/account/">donghwi.kim</a></div>
+<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:31:03.324Z">2026. 09. 23. (수) 15:31 KST</time><a href="/account/">사용자</a></div>
 </header>
 <main class="site-main" id="hana-main" tabindex="-1">
 <section aria-label="주요 지수 · 환율" class="market market--naver">
 <div class="market__inner">
 <ul class="market__list" id="market-list">
-<li class="market__item" data-delayed="false" data-direction="flat" data-key="kospi" title="KOSPI · KOSPI · 한국거래소 · pt · 09. 23. 15:30:00 KST">
+<li class="market__item" data-delayed="false" data-direction="flat" data-key="KOSPI">
 <span class="market__info">
 <span class="market__name">KOSPI</span>
 <span class="market__row">
@@ -142,7 +142,7 @@
 </span>
 <span class="market__spark" data-role="spark"></span>
 </li>
-<li class="market__item" data-delayed="false" data-direction="flat" data-key="kosdaq" title="KOSDAQ · KOSDAQ · 한국거래소 · pt · 09. 23. 15:30:00 KST">
+<li class="market__item" data-delayed="false" data-direction="flat" data-key="KOSDAQ">
 <span class="market__info">
 <span class="market__name">KOSDAQ</span>
 <span class="market__row">
@@ -153,31 +153,9 @@
 </span>
 <span class="market__spark" data-role="spark"></span>
 </li>
-<li class="market__item" data-delayed="false" data-direction="flat" data-key="sp500" title="S&amp;P 500 · .INX · 뉴욕 거래소 · pt · 09. 23. 05:36:35 KST">
+<li class="market__item" data-delayed="false" data-direction="flat" data-key="KPI200">
 <span class="market__info">
-<span class="market__name">S&amp;P 500</span>
-<span class="market__row">
-<span class="market__value" data-role="value">—</span>
-<span class="market__change" data-role="change"></span>
-</span>
-<span class="market__time" data-role="time">시세 미연결</span>
-</span>
-<span class="market__spark" data-role="spark"></span>
-</li>
-<li class="market__item" data-delayed="false" data-direction="flat" data-key="nasdaq" title="NASDAQ · .IXIC · 나스닥 증권거래소 · pt · 09. 23. 06:15:59 KST">
-<span class="market__info">
-<span class="market__name">NASDAQ</span>
-<span class="market__row">
-<span class="market__value" data-role="value">—</span>
-<span class="market__change" data-role="change"></span>
-</span>
-<span class="market__time" data-role="time">시세 미연결</span>
-</span>
-<span class="market__spark" data-role="spark"></span>
-</li>
-<li class="market__item" data-delayed="false" data-direction="flat" data-key="usdkrw" title="USD/KRW · USD · 하나은행 · 원/USD · 09. 23. 15:30:28 KST">
-<span class="market__info">
-<span class="market__name">USD/KRW</span>
+<span class="market__name">KOSPI 200</span>
 <span class="market__row">
 <span class="market__value" data-role="value">—</span>
 <span class="market__change" data-role="change"></span>
@@ -187,7 +165,7 @@
 <span class="market__spark" data-role="spark"></span>
 </li>
 </ul>
-<p class="market__hint"><a href="https://finance.naver.com/" rel="noopener noreferrer" target="_blank">네이버 증권 ↗</a> · 시세 제공 시각은 한국시간(KST) · 1분 간격 확인</p>
+<p class="market__hint" id="market-hint">시세 제공 시각은 한국시간(KST) · 30초 간격 확인</p>
 </div>
 </section>
 <div class="page mkt" data-root="../" id="mkt">
@@ -195,67 +173,20 @@
 <div class="mkt__main">
 <article aria-labelledby="indicator-heading" class="card market-indicators">
 <header class="card__head"><h2 class="card__title" id="indicator-heading">해외 지수 · 금리 · 원자재</h2></header>
-<div class="indicator-grid" id="indicator-grid">
-<div class="indicator" data-delayed="false" data-direction="flat" data-key="dow" title="다우존스 · .DJI · 뉴욕 거래소 · pt · 09. 23. 05:36:45 KST">
-<span class="indicator__name">다우존스</span>
-<span class="indicator__unit">pt</span>
-<strong class="indicator__value" data-role="value">—</strong>
-<span class="indicator__change" data-role="change"></span>
-<span class="indicator__time" data-role="time">시세 미연결</span>
-</div>
-<div class="indicator" data-delayed="false" data-direction="flat" data-key="sox" title="필라델피아 반도체 · .SOX · 나스닥 증권거래소 · pt · 09. 23. 06:15:59 KST">
-<span class="indicator__name">필라델피아 반도체</span>
-<span class="indicator__unit">pt</span>
-<strong class="indicator__value" data-role="value">—</strong>
-<span class="indicator__change" data-role="change"></span>
-<span class="indicator__time" data-role="time">시세 미연결</span>
-</div>
-<div class="indicator" data-delayed="false" data-direction="flat" data-key="vix" title="VIX · .VIX · 시카고옵션거래소 · pt · 09. 23. 05:15:01 KST">
-<span class="indicator__name">VIX</span>
-<span class="indicator__unit">pt</span>
-<strong class="indicator__value" data-role="value">—</strong>
-<span class="indicator__change" data-role="change"></span>
-<span class="indicator__time" data-role="time">시세 미연결</span>
-</div>
-<div class="indicator" data-delayed="false" data-direction="flat" data-key="us10y" title="미국 국채 10년 · US10YT=RR · 네이버 제공 · % · 09. 23. 15:29:57 KST">
-<span class="indicator__name">미국 국채 10년</span>
-<span class="indicator__unit">%</span>
-<strong class="indicator__value" data-role="value">—</strong>
-<span class="indicator__change" data-role="change"></span>
-<span class="indicator__time" data-role="time">시세 미연결</span>
-</div>
-<div class="indicator" data-delayed="false" data-direction="flat" data-key="kr10y" title="한국 국채 10년 · KR10YT=RR · 네이버 제공 · % · 09. 23. 15:30:10 KST">
-<span class="indicator__name">한국 국채 10년</span>
-<span class="indicator__unit">%</span>
-<strong class="indicator__value" data-role="value">—</strong>
-<span class="indicator__change" data-role="change"></span>
-<span class="indicator__time" data-role="time">시세 미연결</span>
-</div>
-<div class="indicator" data-delayed="false" data-direction="flat" data-key="wti" title="WTI 선물 · CLcv1 · 뉴욕상업거래소 · USD/배럴 · 09. 23. 15:21:03 KST">
-<span class="indicator__name">WTI 선물</span>
-<span class="indicator__unit">USD/배럴</span>
-<strong class="indicator__value" data-role="value">—</strong>
-<span class="indicator__change" data-role="change"></span>
-<span class="indicator__time" data-role="time">시세 미연결</span>
-</div>
-<div class="indicator" data-delayed="false" data-direction="flat" data-key="gold" title="금 선물 · GCcv1 · 뉴욕상품거래소 · USD/트로이온스 · 09. 23. 15:21:03 KST">
-<span class="indicator__name">금 선물</span>
-<span class="indicator__unit">USD/트로이온스</span>
-<strong class="indicator__value" data-role="value">—</strong>
-<span class="indicator__change" data-role="change"></span>
-<span class="indicator__time" data-role="time">시세 미연결</span>
-</div>
-</div>
-<p class="mv__source">네이버 증권 제공 · 국채 변화는 전일 대비 bp(1bp = 0.01%p) · 원자재는 선물 시세</p>
+<div class="indicator-grid" id="indicator-grid"></div>
+<p class="mv__source" id="indicator-source"></p>
 </article>
 <article class="card movers" data-provider="naver" id="movers">
 <header class="card__head">
-<h2 class="card__title">국내 종목 시세</h2>
+<h2 class="card__title">관심 종목 시세</h2>
 <span class="card__meta" id="mv-stamp"></span>
 </header>
 <div id="mv-sectors"></div>
 <div aria-label="시장 선택" class="mv__markets segmented" id="mv-markets" role="tablist">
-<button aria-selected="true" class="segmented__btn is-active" data-market="KOSPI" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<button aria-selected="true" class="segmented__btn is-active" data-market="all" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
+</svg>전체</button>
+<button aria-selected="false" class="segmented__btn" data-market="KOSPI" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
 </svg>코스피</button>
 <button aria-selected="false" class="segmented__btn" data-market="KOSDAQ" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
@@ -263,22 +194,22 @@
 </svg>코스닥</button>
 </div>
 <div aria-label="목록 선택" class="segmented mv__tabs" id="mv-tabs" role="tablist">
-<button aria-selected="true" class="segmented__btn is-active" data-list="marketcap" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<button aria-selected="true" class="segmented__btn is-active" data-list="order" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="M4 20h17M7 16v-5m5 5V4m5 12V8"></path>
-</svg>시가총액</button>
+</svg>등록순</button>
 <button aria-selected="false" class="segmented__btn" data-list="gainers" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
 </svg>상승</button>
-<button class="segmented__btn" data-list="losers" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<button aria-selected="false" class="segmented__btn" data-list="losers" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
 </svg>하락</button>
-<button class="segmented__btn" data-list="value" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
-<path d="M4 20h17M7 16v-5m5 5V4m5 12V8"></path>
-</svg>거래대금</button>
+<button aria-selected="false" class="segmented__btn" data-list="memo" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="M14 3H5v18h14V8Zm0 0v5h5M8 12h8m-8 4h6"></path>
+</svg>메모</button>
 </div>
-<div aria-label="국내 종목 시세 표" class="mv__quote-scroll" id="mv-body" role="region" tabindex="0"><table class="mv__table mv__quotes"><thead><tr><th scope="col">종목</th><th scope="col">현재가(원)</th><th scope="col">전일비(원)</th><th scope="col">등락률</th><th scope="col">거래량(주)</th><th scope="col">거래대금</th><th scope="col">시가총액</th><th scope="col">기준 시각(KST)</th></tr></thead><tbody></tbody></table></div>
-<p aria-live="polite" class="mv__note" data-stale="0" id="mv-note">코스피 시가총액 상위 30종목 · 주식·ETF·ETN 포함</p>
-<p class="mv__source"><a href="https://m.stock.naver.com/domestic" rel="noopener noreferrer" target="_blank">네이버 증권 ↗</a> · KRX 비수정 시세 · 화면을 보는 동안 1분마다 확인</p>
+<div aria-label="국내 종목 시세 표" class="mv__quote-scroll" id="mv-body" role="region" tabindex="0"><table class="mv__table mv__quotes"><thead><tr><th scope="col">종목</th><th scope="col">현재가(원)</th><th scope="col">전일비(원)</th><th scope="col">등락률</th><th scope="col">장 상태</th><th scope="col">기준 시각(KST)</th><th scope="col">메모</th><th scope="col">관리</th></tr></thead><tbody></tbody></table></div>
+<p aria-live="polite" class="mv__note" data-stale="0" id="mv-note"></p>
+<p class="mv__source" id="mv-source">관심 종목은 모든 사용자가 함께 씁니다 · 화면을 보는 동안 30초마다 확인</p>
 </article>
 <article class="card brief" id="brief">
 <header class="card__head">
@@ -307,12 +238,12 @@
 </div>
 </header>
 <div aria-label="뉴스 섹터" class="news__tabs" id="news-tabs" role="tablist">
-<button aria-controls="news-list" aria-selected="true" class="news__tab is-active" data-sector="markets" role="tab" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
-<path d="M14 3H5v18h14V8Zm0 0v5h5M8 12h8m-8 4h6"></path>
-</svg>주요 증시 뉴스</button>
+<button aria-controls="news-list" aria-selected="true" class="news__tab is-active" data-sector="all" role="tab" type="button">전체</button>
+<button aria-controls="news-list" aria-selected="false" class="news__tab" data-sector="kr" role="tab" type="button">국내 증시</button>
+<button aria-controls="news-list" aria-selected="false" class="news__tab" data-sector="global" role="tab" type="button">해외 증시</button>
 </div>
 <ul class="news__list" data-page-size="5" id="news-list"></ul>
-<p class="mv__source">네이버 증권 · 제목을 누르면 원문으로 이동 · 5분 간격 확인</p>
+<p class="mv__source" id="news-source">뉴스 자동 수집은 아직 연결되지 않았습니다 · 읽을 기사 링크를 직접 남겨 함께 봅니다</p>
 </article>
 </div>
 </div>

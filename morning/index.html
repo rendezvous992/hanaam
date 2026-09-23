@@ -104,9 +104,9 @@
 <button aria-controls="hana-navigation" aria-expanded="true" aria-label="메뉴 접기" class="hana-sidebar-fold" data-hana-toggle="" title="메뉴 접기 · Alt+S" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="m14 6-6 6 6 6m5-14v16"></path>
 </svg><span>메뉴 접기</span><kbd>Alt S</kbd></button>
-<a class="hana-account" data-hana-stub="" href="/account/">
-<span aria-hidden="true" class="hana-user-avatar">D</span>
-<span class="hana-account-copy"><strong>donghwi.kim</strong><small>계정 관리자 · 미지정</small></span>
+<a class="hana-account" href="/account/">
+<span aria-hidden="true" class="hana-user-avatar">사</span>
+<span class="hana-account-copy"><strong>사용자</strong><small>계정 관리자 · 미지정</small></span>
 <svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <circle cx="9" cy="8" r="3"></circle><path d="M3 20v-2a6 6 0 0 1 12 0v2m3-13v6m-3-3h6"></path>
 </svg>
@@ -124,7 +124,7 @@
 </svg></button>
 <span class="hana-breadcrumb"><strong>아침회의</strong></span>
 </div>
-<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:24:08.327Z">2026. 09. 23. (수) 15:24 KST</time><a data-hana-stub="" href="/account/">donghwi.kim</a></div>
+<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:24:08.327Z">2026. 09. 23. (수) 15:24 KST</time><a href="/account/">사용자</a></div>
 </header>
 <main class="site-main" id="hana-main" tabindex="-1">
 <div class="page">
@@ -163,7 +163,27 @@
 <div class="mm-list" id="mm-today-list"></div>
 <div class="empty-state" id="mm-today-empty">
 <p class="empty-state__title">이 날에 올라온 발표 자료가 없습니다.</p>
-<p class="empty-state__text">‘발표 업로드’에서 날짜·자료·발표자를 넣어 주세요.</p>
+<p class="empty-state__text" id="mm-today-empty-text">‘자료 업로드’에서 날짜·자료·발표자를 넣어 주세요.</p>
+</div>
+</section>
+<section class="mm-view" data-view="upload" hidden>
+<form class="mm-form" id="mm-upload-form" novalidate></form>
+</section>
+<section class="mm-view" data-view="archive" hidden>
+<div class="mm-toolbar">
+<label class="mm-search"><input aria-label="지난 자료 검색" class="input input--compact" id="mm-q" placeholder="발표자·부서·제목·파일 이름으로 찾기" type="search"/></label>
+<select aria-label="기간" class="input input--compact" id="mm-range">
+<option value="all">전체 기간</option>
+<option value="30">최근 30일</option>
+<option value="90">최근 90일</option>
+<option value="365">최근 1년</option>
+</select>
+<span class="mm-daycount" id="mm-archive-count"></span>
+</div>
+<div class="mm-archive" id="mm-archive"></div>
+<div class="empty-state" hidden id="mm-archive-empty">
+<p class="empty-state__title" id="mm-archive-empty-title">아직 올라온 발표 자료가 없습니다.</p>
+<p class="empty-state__text">자료를 올리면 날짜별로 여기에 쌓입니다.</p>
 </div>
 </section>
 </div>

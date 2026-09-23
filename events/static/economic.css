@@ -100,3 +100,39 @@
   .economic-range > span { white-space: nowrap; padding-top: 7px; }
   .economic-table th, .economic-table td { padding: 12px 14px; }
 }
+/* 직접 입력·CSV 버튼과 중요도 표시 (기능 추가분) */
+.economic-side { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+
+.economic-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+
+.economic-title-btn { display: block; padding: 0px; border: 0px; background: none; font: inherit; text-align: left; cursor: pointer; color: inherit; }
+
+.economic-title-btn:hover .economic-title { color: var(--primary); text-decoration: underline; }
+
+.economic-impact { display: inline-block; margin-left: 6px; font-size: 9px; letter-spacing: 1px; vertical-align: 1px; color: var(--border-strong); }
+
+.economic-impact b { color: rgb(196, 76, 52); font-weight: 400; }
+
+.economic-manual { color: var(--primary); }
+
+.economic-pending { color: var(--text-muted); font-size: 10px; }
+
+.economic-updated.is-error { color: var(--danger); }
+
+.economic-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0px, 1fr)); gap: 12px 14px; }
+
+.economic-form-grid .field--wide { grid-column: 1 / -1; }
+
+@media (max-width: 700px) {
+  .economic-heading { flex-wrap: wrap; }
+  .economic-side { align-items: flex-start; width: 100%; }
+  .economic-actions { justify-content: flex-start; }
+  .economic-form-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* 알림(토스트) — 공용 CSS 에 없어 두 이벤트 화면에서 함께 쓴다 */
+.notice-toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 12px); z-index: 130; max-width: min(520px, -32px + 100vw); padding: 12px 18px; border-radius: 10px; background: var(--text-strong, #1f2330); color: rgb(255, 255, 255); font-size: 15px; line-height: 1.5; box-shadow: rgba(0, 0, 0, 0.22) 0px 8px 24px; opacity: 0; pointer-events: none; transition: opacity 0.18s, transform 0.18s; white-space: pre-line; }
+
+.notice-toast--on { opacity: 1; transform: translate(-50%, 0px); }
+
+.notice-toast--error { background: rgb(179, 38, 30); }

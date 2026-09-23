@@ -388,3 +388,7 @@ body.evx-coach-open { overflow: hidden; }
 @media (max-width: 640px) {
   .evx-day__meta { display: none; }
 }
+/* 표 보기는 가로 스크롤 상자 안이라 머리글 고정 기준이 상자다 */
+#evx-table-view .evx-table thead th { top: 0px; }
+
+.evx-empty-row td { padding: 48px 16px; text-align: center; color: var(--text-muted); }

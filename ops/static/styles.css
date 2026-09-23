@@ -265,3 +265,27 @@
   .ops-entry__when { margin-left: 0px; }
   .ops-heading__note { margin-left: 0px; width: 100%; }
 }
+/* 첨부 파일 (이 사이트에서 추가) */
+.ops-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.ops-file { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; font: inherit; font-size: 13px; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-sunken); color: var(--text); cursor: pointer; }
+.ops-file:hover { border-color: var(--primary); color: var(--primary); }
+.ops-file__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-file__size { font-size: 11.5px; color: var(--text-muted); flex: 0 0 auto; }
+.ops-attach { display: flex; flex-direction: column; gap: 6px; }
+.ops-attach__bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-sunken); }
+.ops-attach__bar.is-over { border-color: var(--primary); background: var(--primary-soft); }
+.ops-attach__hint { font-size: 12.5px; color: var(--text-muted); }
+.ops-attach__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ops-attach__item { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.ops-attach__item--new { border-style: dashed; }
+.ops-attach__name { flex: 1 1 0%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ops-attach__size { flex: 0 0 auto; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.ops-side__add-day { display: flex; gap: 6px; }
+.ops-side__add-day .input--compact { flex: 1 1 0%; min-width: 0; }
+.ops-search__clear { font: inherit; font-size: 13px; color: var(--primary); background: none; border: 0; padding: 0; margin-left: 8px; cursor: pointer; }
+.ops-search__clear:hover { text-decoration: underline; }
+
+/* 알림 토스트 (shell.js 가 만든다) */
+.notice-toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 12px); z-index: 130; max-width: min(520px, -32px + 100vw); padding: 12px 18px; border-radius: 10px; background: var(--text-strong, #1f2330); color: rgb(255, 255, 255); font-size: 15px; line-height: 1.5; box-shadow: rgba(0, 0, 0, 0.22) 0px 8px 24px; opacity: 0; pointer-events: none; transition: opacity 0.18s, transform 0.18s; }
+.notice-toast--on { opacity: 1; transform: translate(-50%, 0px); }
+.notice-toast--error { background: rgb(179, 38, 30); }

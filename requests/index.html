@@ -104,9 +104,9 @@
 <button aria-controls="hana-navigation" aria-expanded="true" aria-label="메뉴 접기" class="hana-sidebar-fold" data-hana-toggle="" title="메뉴 접기 · Alt+S" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <path d="m14 6-6 6 6 6m5-14v16"></path>
 </svg><span>메뉴 접기</span><kbd>Alt S</kbd></button>
-<a class="hana-account" data-hana-stub="" href="/account/">
-<span aria-hidden="true" class="hana-user-avatar">D</span>
-<span class="hana-account-copy"><strong>donghwi.kim</strong><small>계정 관리자 · 미지정</small></span>
+<a class="hana-account" href="/account/">
+<span aria-hidden="true" class="hana-user-avatar">사</span>
+<span class="hana-account-copy"><strong>사용자</strong><small>계정 관리자 · 미지정</small></span>
 <svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
 <circle cx="9" cy="8" r="3"></circle><path d="M3 20v-2a6 6 0 0 1 12 0v2m3-13v6m-3-3h6"></path>
 </svg>
@@ -124,7 +124,7 @@
 </svg></button>
 <span class="hana-breadcrumb"><strong>개선요청</strong></span>
 </div>
-<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:31:09.462Z">2026. 09. 23. (수) 15:31 KST</time><a data-hana-stub="" href="/account/">donghwi.kim</a></div>
+<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:31:09.462Z">2026. 09. 23. (수) 15:31 KST</time><a href="/account/">사용자</a></div>
 </header>
 <main class="site-main" id="hana-main" tabindex="-1">
 <div class="page">
@@ -165,6 +165,11 @@
           반려 <span class="req-tab__n" data-count="rejected">0</span>
 </button>
 </div>
+<div class="req-filters">
+<label class="field field--inline">
+<span class="field__label">검색</span>
+<input aria-label="요청 검색" autocomplete="off" class="input input--compact req-search" id="req-q" placeholder="제목·내용·처리 메모" type="search"/>
+</label>
 <label class="field field--inline">
 <span class="field__label">분류</span>
 <select class="input input--compact" id="req-filter-category">
@@ -176,6 +181,7 @@
 <option value="etc">기타</option>
 </select>
 </label>
+</div>
 </div>
 <div class="req-empty" id="req-empty">아직 등록된 요청이 없습니다. 불편한 점이 있으면 첫 요청을 남겨 주세요.</div>
 <div class="req-list" id="req-list"></div>
