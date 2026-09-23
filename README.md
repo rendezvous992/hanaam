@@ -19,7 +19,19 @@ venv/bin/uvicorn server.app:app --port 8000
 # http://localhost:8000/notes/ 접속 → 로그인
 ```
 
-### 2) 서버 없이 (혼자 써 보기)
+### 2) Vercel 에 테스트 사이트로 올리기 (서버 없음)
+
+`https://<프로젝트명>.vercel.app` 주소로 바로 띄워 볼 수 있습니다. `vercel.json`·`.vercelignore`가 준비돼 있어 따로 설정할 것이 없습니다.
+
+1. https://vercel.com 에 GitHub 계정으로 가입/로그인
+2. **Add New… → Project → Import Git Repository** 에서 `hanaam` 선택 (안 보이면 *Adjust GitHub App Permissions*로 이 레포 접근 허용)
+3. Framework Preset은 **Other** 그대로 두고 **Deploy**
+4. 1분 뒤 나오는 주소로 접속 (`/`로 들어가면 `/notes/`로 이동). 주소 이름은 Project → Settings → Domains 에서 바꿀 수 있습니다.
+
+이 방식은 아래 3)과 같이 **노트가 각 브라우저에만 저장**됩니다. 부서원끼리 공유하려면 1)처럼 서버가 필요합니다.
+GitHub에 푸시할 때마다 Vercel이 자동으로 다시 배포합니다.
+
+### 3) 서버 없이 내 PC에서 (혼자 써 보기)
 
 ```bash
 python3 -m http.server 8000

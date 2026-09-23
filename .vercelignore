@@ -1,0 +1,6 @@
+# Vercel 에는 화면(정적 파일)만 올린다. 서버·설치 스크립트는 AWS 등 서버용이다.
+server/
+deploy/
+data/
+venv/
+.venv/
