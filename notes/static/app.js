@@ -2388,6 +2388,36 @@
   }
   $("#reset-btn").addEventListener("click", resetAll);
 
+  // 노트북LM(구글)용 내보내기: 지금 조건에 맞는 노트를 한 파일(마크다운)로 묶는다
+  $("#nblm-btn").addEventListener("click", () => {
+    const list = notes.filter((n) => matches(n)).sort(byNewest);
+    if (!list.length) return toast("내보낼 노트가 없습니다. 검색·필터를 확인해 주세요.", true);
+    const cond = [state.company, state.q && "검색: " + state.q, state.sectors.length && "섹터: " + state.sectors.join(", "), state.from && state.from + "~", state.to && "~" + state.to]
+      .filter(Boolean).join(" · ");
+    const parts = [
+      "# 기업 노트 모음" + (cond ? " (" + cond + ")" : ""),
+      "",
+      "내보낸 날: " + kstToday() + " · 노트 " + list.length + "건",
+      "",
+    ];
+    list.forEach((n) => {
+      parts.push("---", "", "## " + companyLabel(n) + " · " + n.title, "");
+      parts.push("- 날짜: " + dotDate(n.date), "- 분류: " + (CAT_LABEL[n.category] || "기타") + (n.type ? " / " + n.type : ""), "- 섹터: " + sectorOf(n), "- 작성: " + (n.author || ""));
+      if (n.link) parts.push("- 원문 링크: " + n.link);
+      parts.push("", String(n.body || "").trim() || "(본문 없음)", "");
+    });
+    const name = "노트북LM_노트_" + kstToday() + (state.company ? "_" + state.company : "") + ".md";
+    const blob = new Blob([parts.join("\n")], { type: "text/markdown;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name.replace(/[\\/:*?"<>|]/g, "_");
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    toast("노트 " + list.length + "건을 파일로 내려받았습니다. notebooklm.google.com 에서 ‘소스 추가 → 파일 업로드’로 올리세요.");
+  });
+
   // 섹터 체크
   $("#sector-bar").addEventListener("change", (e) => {
     const box = e.target.closest('input[type="checkbox"]');
