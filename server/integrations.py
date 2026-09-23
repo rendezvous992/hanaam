@@ -10,6 +10,8 @@ AI 리서치는 저장된 노트 검색 결과만 돌려준다.
   CRON_SECRET         예약 리서치를 깨우는 주기 호출(Vercel Cron) 확인용
   XAI_API_KEY         노트 요약(Grok). 있으면 요약은 Grok 으로, 없으면 Claude 로 한다
   XAI_MODEL           (선택) Grok 모델 이름, 기본 grok-4
+  OPENAI_API_KEY      녹음 자동 받아쓰기(Whisper). GROQ_API_KEY 로 대신할 수 있다
+  GROQ_API_KEY        녹음 자동 받아쓰기(Groq Whisper, 무료 한도 있음)
   TELEGRAM_BOT_TOKEN  텔레그램 수집 봇 (@BotFather 에서 무료 발급). 봇이 들어간 방의 메시지를 사이트에 모은다
 """
 
@@ -32,6 +34,9 @@ from xml.etree import ElementTree
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+
+from .db import blob_bytes
+from .stt import MAX_AUDIO_BYTES, SttError, stt_provider, stt_ready, transcribe_audio
 
 KST = timezone(timedelta(hours=9))
 UA = "Mozilla/5.0 (compatible; hana-workspace/1.0)"
@@ -1259,6 +1264,10 @@ def register(app: FastAPI, require_user, has_feature, connect) -> None:
             # 요약은 Grok(XAI_API_KEY) 우선, 없으면 Claude
             "summary": bool(_env("XAI_API_KEY") or _env("ANTHROPIC_API_KEY")),
             "summaryProvider": "Grok" if _env("XAI_API_KEY") else ("Claude" if _env("ANTHROPIC_API_KEY") else ""),
+            # 녹음 자동 받아쓰기 (OpenAI/Groq Whisper). 없으면 화면이 브라우저 실시간 받아쓰기만 쓴다
+            "stt": stt_ready(),
+            "sttProvider": stt_provider(),
+            "sttMaxMb": MAX_AUDIO_BYTES // 1024 // 1024,
         }
 
     @app.get("/api/integrations")
@@ -1467,6 +1476,53 @@ def register(app: FastAPI, require_user, has_feature, connect) -> None:
         except Exception as e:  # noqa: BLE001 — 사용자에게 이유만 알려 준다
             return JSONResponse({"detail": ai_error_message(e)}, status_code=502)
         return {"summary": out, "provider": provider}
+
+    # --- 녹음 받아쓰기 -------------------------------------------------------
+
+    def _audio_bytes(conn, file_id: str) -> tuple[bytes, str, str]:
+        """노트에 붙은 녹음(blob) 을 통째로 읽는다. (바이트, 파일명, mime)"""
+        if not re.fullmatch(r"[0-9a-f]{32}", file_id or ""):
+            raise HTTPException(404, "녹음 파일을 찾을 수 없습니다.")
+        blob = conn.one("SELECT * FROM blobs WHERE id = ? AND complete = 1", (file_id,))
+        if blob is None:
+            raise HTTPException(404, "녹음 파일을 찾을 수 없습니다.")
+        if int(blob["size"] or 0) > MAX_AUDIO_BYTES:
+            raise HTTPException(413, f"녹음이 너무 큽니다. 받아쓰기는 {MAX_AUDIO_BYTES // 1024 // 1024}MB 까지만 됩니다.")
+        out = bytearray()
+        for row in conn.all("SELECT data FROM blob_chunks WHERE blob_id = ? ORDER BY seq", (file_id,)):
+            out += blob_bytes(row["data"])
+        return bytes(out), str(blob["name"] or "audio.webm"), str(blob["mime"] or "")
+
+    @app.post("/api/ai/transcribe")
+    async def api_ai_transcribe(request: Request) -> Any:
+        """저장된 녹음을 글로 옮긴다. summarize=1 이면 옮긴 글을 노트 형식으로 정리까지 한다."""
+        user = require_user(request)
+        if not has_feature(user, "ai_research"):
+            raise HTTPException(403, "AI 기능 권한(AI 리서치)이 없습니다.")
+        if not stt_ready():
+            return not_connected("자동 받아쓰기", "OPENAI_API_KEY (또는 GROQ_API_KEY)")
+        data = await request.json()
+        file_id = str((data or {}).get("fileId") or (data or {}).get("blobId") or "").strip()
+        with connect() as conn:
+            audio, name, mime = _audio_bytes(conn, file_id)
+        import anyio
+
+        try:
+            text, provider = await anyio.to_thread.run_sync(lambda: transcribe_audio(audio, name, mime))
+        except SttError as e:
+            return JSONResponse({"detail": str(e)}, status_code=502)
+
+        out: dict[str, Any] = {"text": text, "provider": provider}
+        if (data or {}).get("summarize") and len(text) >= 30 and (_env("XAI_API_KEY") or _env("ANTHROPIC_API_KEY")):
+            head = " · ".join(x for x in [str(data.get("company") or ""), str(data.get("title") or "")] if x)
+            prompt = f'<source title="{head}">\n{text[:60000]}\n</source>\n\n위 녹취록을 노트 형식으로 정리해 주세요.'
+            try:
+                out["summary"], out["summaryProvider"] = await anyio.to_thread.run_sync(
+                    lambda: summarize_text(SUMMARY_PROMPT, prompt)
+                )
+            except Exception as e:  # noqa: BLE001 — 받아쓴 글은 그대로 돌려주고 요약 실패만 알린다
+                out["summaryError"] = ai_error_message(e)
+        return out
 
     # --- 시세 --------------------------------------------------------------
 

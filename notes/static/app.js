@@ -123,6 +123,9 @@
   let aiReady = false; // 물어보기(Claude)
   let sumReady = false; // 요약 (Grok 우선, 없으면 Claude)
   let sumName = "Grok";
+  let sttReady = false; // 서버 자동 받아쓰기 (Whisper 계열)
+  let sttName = "";
+  let sttMaxMb = 24;
   let serverApi = null;
   let aiWhy = "서버(데이터베이스)가 연결되지 않아 이 브라우저 저장 모드에서는 AI 를 쓸 수 없습니다."; // 안 될 때 이유
   function explainAI() {
@@ -144,6 +147,12 @@
     const out = await serverApi("POST", "/api/ai/summarize", { text, company, title });
     if (out.provider) sumName = out.provider;
     return out.summary;
+  }
+  // 서버에 저장된 녹음을 글로 옮긴다 (summarize 를 켜면 노트 형식 정리까지 받아 온다)
+  async function aiTranscribe(fileId, opts) {
+    const out = await serverApi("POST", "/api/ai/transcribe", Object.assign({ fileId }, opts || {}));
+    if (out.provider) sttName = out.provider;
+    return out;
   }
 
   /* ================================================================
@@ -1089,7 +1098,14 @@
       "</div>" +
       (n.audio
         ? '<div class="detail-audio-wrap" data-audio><span class="detail-audio-label">🎙 녹음</span></div>' +
-          '<p class="detail-audio-note">' + (store.server ? "녹음은 서버에 저장되어 있습니다." : "녹음 파일은 이 브라우저에만 저장되어 있습니다.") + " 자동 받아쓰기는 지원하지 않으니 본문은 직접 정리해 주세요.</p>"
+          '<p class="detail-audio-note">' +
+          (store.server ? "녹음은 서버에 저장되어 있습니다." : "녹음 파일은 이 브라우저에만 저장되어 있습니다.") +
+          (store.server && sttReady
+            ? ' <button type="button" class="btn btn--ghost btn--sm" data-act="stt">🎧 받아쓰기' + (sumReady ? " + 요약" : "") + "</button>"
+            : store.server
+              ? " 자동 받아쓰기를 쓰려면 관리자가 OPENAI_API_KEY(또는 GROQ_API_KEY)를 넣어야 합니다."
+              : " 자동 받아쓰기는 서버 모드에서만 됩니다.") +
+          "</p>"
         : "") +
       (attach.length ? '<div class="detail-attach">' + attach.join("") + "</div>" : "") +
       (n.body && n.body.trim()
@@ -1216,6 +1232,32 @@
         } catch (err) {
           act.disabled = false;
           act.textContent = "✦ " + sumName + " 요약";
+          toast(err.message, true);
+        }
+      } else if (what === "stt") {
+        // 서버에 저장된 녹음 → 글 (+ 요약). 본문이 이미 있으면 덮어쓰기 전에 물어본다.
+        if (!n.audio) return;
+        if (String(n.body || "").trim() && !window.confirm("본문이 이미 있습니다. 받아쓴 글을 본문 위에 덧붙일까요?")) return;
+        act.disabled = true;
+        const label = act.textContent;
+        act.textContent = "받아쓰는 중… (녹음 길이만큼 걸립니다)";
+        try {
+          const out = await aiTranscribe(n.audio.id, {
+            summarize: sumReady ? 1 : 0,
+            company: n.company,
+            title: n.title,
+          });
+          const head = out.summary ? out.summary + "\n\n---\n## 녹취 원문\n" + out.text : out.text;
+          const body = String(n.body || "").trim() ? head + "\n\n---\n" + n.body : head;
+          await store.update(n, { body });
+          if (out.summaryError) toast("받아쓰기는 됐지만 요약은 실패했습니다: " + out.summaryError, true);
+          else toast("받아쓰기를 본문에 넣었습니다. (" + (out.provider || "STT") + ")");
+          ctx.close(true);
+          render();
+          openDetail(n.id);
+        } catch (err) {
+          act.disabled = false;
+          act.textContent = label;
           toast(err.message, true);
         }
       } else if (what === "ai-copy") {
@@ -1742,6 +1784,87 @@
   }
 
   /* ================================================================
+   * 실시간 받아쓰기 — 크롬 등의 Web Speech API. 키가 필요 없고 녹음과 같이 돈다.
+   * (말이 끊기면 브라우저가 스스로 멈추므로, 녹음 중에는 다시 켜 준다)
+   * ================================================================ */
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+
+  function createDictation(onText) {
+    if (!SpeechRec) return null;
+    let rec = null;
+    let want = false;
+    let finalText = "";
+    let lastError = "";
+
+    function emit(interim) {
+      onText(finalText, interim || "");
+    }
+    function make() {
+      const r = new SpeechRec();
+      r.lang = "ko-KR";
+      r.continuous = true;
+      r.interimResults = true;
+      r.maxAlternatives = 1;
+      r.onresult = (e) => {
+        let interim = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const piece = e.results[i][0].transcript;
+          if (e.results[i].isFinal) finalText += (finalText && !/\s$/.test(finalText) ? " " : "") + piece.trim();
+          else interim += piece;
+        }
+        emit(interim);
+      };
+      r.onerror = (e) => {
+        // no-speech·aborted 는 흔한 일이라 그냥 다시 켠다
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          want = false;
+          lastError = "마이크 권한이 없어 실시간 받아쓰기를 쓸 수 없습니다.";
+        } else if (e.error === "network") {
+          lastError = "네트워크 문제로 실시간 받아쓰기가 끊겼습니다.";
+        }
+      };
+      r.onend = () => {
+        if (!want) return;
+        try {
+          r.start();
+        } catch (err) {
+          /* 이미 돌고 있으면 무시 */
+        }
+      };
+      return r;
+    }
+    return {
+      supported: true,
+      start() {
+        want = true;
+        lastError = "";
+        if (!rec) rec = make();
+        try {
+          rec.start();
+        } catch (err) {
+          /* 이미 돌고 있으면 무시 */
+        }
+      },
+      stop() {
+        want = false;
+        if (rec) {
+          try {
+            rec.stop();
+          } catch (err) {
+            /* 이미 멈췄으면 무시 */
+          }
+        }
+        emit("");
+      },
+      text: () => finalText,
+      setText(v) {
+        finalText = v || "";
+      },
+      error: () => lastError,
+    };
+  }
+
+  /* ================================================================
    * 녹음
    * ================================================================ */
   function openRecorder() {
@@ -1758,6 +1881,15 @@
       '<p class="recorder__input-warning" data-warning hidden></p></div>' +
       '<div class="detail-audio-wrap" data-preview hidden><span class="detail-audio-label">미리 듣기</span></div>' +
       '<div class="rec-actions" data-rec-actions hidden><button type="button" class="btn btn--ghost btn--sm" data-act="reset">다시 녹음</button></div>' +
+      '<div class="rec-script" data-script-wrap>' +
+      '<div class="rec-script__head"><span class="rec-script__label">받아쓰기</span>' +
+      '<span class="rec-script__state" data-script-state></span>' +
+      '<span class="rec-script__actions">' +
+      '<button type="button" class="btn btn--ghost btn--sm" data-act="script-sum" hidden>✦ 요약해 본문으로</button>' +
+      '<button type="button" class="btn btn--ghost btn--sm" data-act="script-clear" hidden>지우기</button></span></div>' +
+      '<textarea class="input rec-script__text" data-script rows="6" placeholder="녹음을 시작하면 들린 말이 여기에 적힙니다. 직접 고쳐도 되고, 저장하면 노트 본문이 됩니다."></textarea>' +
+      '<p class="rec-script__hint" data-script-hint></p>' +
+      "</div>" +
       '<p class="recorder__or">또는</p>' +
       '<label class="dropzone dropzone--audio" data-drop><input type="file" accept="audio/*,video/webm,video/mp4" hidden data-audio-input>' +
       '<p class="dropzone__title">녹음 파일 올리기</p><p class="dropzone__text">끌어다 놓거나 눌러서 고르세요 (m4a, mp3, wav, webm)</p><p class="dropzone__picked" data-picked hidden></p></label>' +
@@ -1773,7 +1905,7 @@
       '<input class="input" id="record-type-custom" placeholder="유형 직접 입력" hidden></div>' +
       '<p class="record-title-line">저장될 제목 <strong data-title-preview>—</strong></p>' +
       "</div>" +
-      '<div class="rec-safe">녹음 파일은 서버로 올라가지 않고 이 브라우저(IndexedDB)에만 저장됩니다. 원본 서비스의 자동 받아쓰기·요약은 이 복제본에서 지원하지 않습니다.</div>' +
+      '<div class="rec-safe" data-safe></div>' +
       '<div class="modal__footer"><div class="modal__footer-right"><button type="button" class="btn btn--ghost" data-act="cancel">취소</button>' +
       '<button type="button" class="btn btn--primary" data-act="save" disabled>노트로 저장</button></div></div>' +
       "</div>";
@@ -1790,6 +1922,7 @@
     let previewUrl = "";
     let player = null;
     let quietSince = 0;
+    let dict = null; // 실시간 받아쓰기 (Web Speech API)
 
     const ctx = openModal({
       title: "녹음",
@@ -1803,6 +1936,7 @@
       },
       onClose() {
         stopStream();
+        if (dict) dict.stop();
         if (player) player.destroy();
         if (previewUrl) URL.revokeObjectURL(previewUrl);
       },
@@ -1824,6 +1958,31 @@
     const picked = $("[data-picked]", m);
     const audioInput = $("[data-audio-input]", m);
     const drop = $("[data-drop]", m);
+    const scriptBox = $("[data-script]", m);
+    const scriptState = $("[data-script-state]", m);
+    const scriptHint = $("[data-script-hint]", m);
+    const scriptSum = $('[data-act="script-sum"]', m);
+    const scriptClear = $('[data-act="script-clear"]', m);
+    const safeBox = $("[data-safe]", m);
+
+    safeBox.textContent = store.server
+      ? "녹음 파일은 서버에 저장되어 부서원이 함께 듣습니다. 받아쓴 글은 저장하면 노트 본문이 됩니다."
+      : "녹음 파일은 서버로 올라가지 않고 이 브라우저(IndexedDB)에만 저장됩니다.";
+    scriptHint.textContent = SpeechRec
+      ? "크롬이 말소리를 바로 글로 옮깁니다. 정확하지 않을 수 있으니 저장 전에 한 번 훑어보세요."
+      : sttReady
+        ? "이 브라우저는 실시간 받아쓰기를 지원하지 않습니다. 저장한 뒤 노트 상세에서 '받아쓰기' 를 누르면 녹음 파일로 받아쓸 수 있습니다."
+        : "이 브라우저는 실시간 받아쓰기를 지원하지 않습니다(크롬 권장). 직접 적어도 됩니다.";
+
+    function scriptText() {
+      return scriptBox.value.trim();
+    }
+    function showScriptButtons() {
+      const len = scriptText().length;
+      scriptClear.hidden = len === 0;
+      scriptSum.hidden = len < 30;
+    }
+    scriptBox.addEventListener("input", showScriptButtons);
 
     function warn(text) {
       warning.hidden = !text;
@@ -1883,6 +2042,10 @@
       elapsedBefore = 0;
       timer.textContent = "00:00";
       status.textContent = "버튼을 누르면 녹음을 시작합니다.";
+      scriptBox.value = "";
+      scriptState.textContent = "";
+      if (dict) dict.setText("");
+      showScriptButtons();
       updateTitle();
     }
 
@@ -1964,6 +2127,7 @@
         status.textContent = "녹음 완료 · " + clock(duration) + " — 종목을 확인하고 저장하세요.";
       };
       recorder.start(1000);
+      startDictation();
       startedAt = Date.now();
       elapsedBefore = 0;
       timerId = window.setInterval(showTime, 250);
@@ -1974,9 +2138,28 @@
     }
     function stop() {
       if (recorder && recorder.state !== "inactive") recorder.stop();
+      if (dict) {
+        dict.stop();
+        scriptState.textContent = dict.error() || (scriptText() ? "받아쓰기 끝" : "들린 말이 없습니다");
+      }
       window.clearInterval(timerId);
       mic.classList.remove("recorder__mic--recording");
       mic.setAttribute("aria-label", "녹음 시작");
+    }
+
+    // 녹음과 함께 도는 실시간 받아쓰기. 사람이 칸을 직접 고쳤으면 그 내용을 이어서 쓴다.
+    function startDictation() {
+      if (!SpeechRec) return;
+      if (!dict) {
+        dict = createDictation((finalText, interim) => {
+          scriptBox.value = finalText + (interim ? (finalText ? " " : "") + interim : "");
+          scriptBox.scrollTop = scriptBox.scrollHeight;
+          showScriptButtons();
+        });
+      }
+      dict.setText(scriptBox.value.trim());
+      dict.start();
+      scriptState.textContent = "듣는 중…";
     }
 
     mic.addEventListener("click", () => {
@@ -1997,6 +2180,12 @@
       setResult(file, file.name, 0);
       picked.textContent = "선택됨: " + file.name + " (" + fileSize(file.size) + ")";
       picked.hidden = false;
+      if (sttReady && !scriptText()) {
+        scriptState.textContent =
+          file.size > sttMaxMb * 1024 * 1024
+            ? "이 파일은 " + sttMaxMb + "MB 가 넘어 자동 받아쓰기를 쓸 수 없습니다"
+            : "저장한 뒤 노트 상세에서 '받아쓰기' 를 누르면 이 파일을 글로 옮깁니다";
+      }
       status.textContent = "파일을 골랐습니다 — 종목을 확인하고 저장하세요.";
       const guess = detectCompany(file.name);
       if (guess && !companyInput.value.trim()) {
@@ -2042,7 +2231,29 @@
       const what = act.getAttribute("data-act");
       if (what === "cancel") ctx.close();
       else if (what === "reset") {
-        if (window.confirm("지금 녹음을 버리고 다시 녹음할까요?")) resetResult();
+        if (window.confirm("지금 녹음을 버리고 다시 녹음할까요? 받아쓴 글도 같이 지워집니다.")) resetResult();
+      } else if (what === "script-clear") {
+        if (!window.confirm("받아쓴 글을 지울까요?")) return;
+        scriptBox.value = "";
+        if (dict) dict.setText("");
+        showScriptButtons();
+      } else if (what === "script-sum") {
+        if (!sumReady) return explainAI();
+        const text = scriptText();
+        if (text.length < 30) return;
+        act.disabled = true;
+        act.textContent = "요약하는 중…";
+        try {
+          const summary = await aiSummarize(text, companyInput.value.trim(), companyInput.value.trim() + " " + currentType());
+          scriptBox.value = summary + "\n\n---\n## 녹취 원문\n" + text;
+          scriptState.textContent = sumName + " 요약을 넣었습니다";
+          showScriptButtons();
+        } catch (err) {
+          toast(err.message, true);
+        } finally {
+          act.disabled = false;
+          act.textContent = "✦ 요약해 본문으로";
+        }
       } else if (what === "save") {
         const company = companyInput.value.trim();
         const ticker = tickerInput.value.trim();
@@ -2063,7 +2274,7 @@
             date: result.date || kstToday(),
             author: CURRENT_USER,
             title: company + " " + type,
-            body: "",
+            body: scriptText(),
             link: "",
             review: null,
           });
@@ -2105,7 +2316,9 @@
       "<li><strong>+ 노트 등록</strong> → 맨 위 칸에 <strong>링크만 붙여넣으면</strong> 종목·분류·날짜를 찾아 채웁니다. 못 찾으면 종목명만 직접 입력하세요.</li>" +
       "<li>제목을 비워 두면 <code>종목명 유형</code>(예: 올릭스 콥데이)으로 저장됩니다.</li>" +
       "<li><strong>여러 건 한번에</strong> 탭에서 텍스트 파일 여러 개를 올리면 파일마다 노트가 한 건씩 생깁니다. 종목을 못 찾은 노트는 <strong>확인 필요</strong>로 모입니다.</li>" +
-      "<li>미팅 현장에서는 빨간 <strong>녹음</strong> 버튼으로 바로 녹음해 노트에 붙일 수 있습니다. <span class=\"guide__tip\">녹음 파일은 이 브라우저에만 저장</span></li>" +
+      "<li>미팅 현장에서는 빨간 <strong>녹음</strong> 버튼으로 바로 녹음합니다. 크롬이면 말하는 대로 <strong>받아쓰기</strong> 칸이 채워지고, 저장하면 그대로 노트 본문이 됩니다. <span class=\"guide__tip\">" +
+      (store.server ? "녹음은 서버에 저장되어 부서원과 함께 듣습니다" : "녹음 파일은 이 브라우저에만 저장") + "</span></li>" +
+      "<li>올려 둔 녹음 파일도 노트를 열어 <strong>받아쓰기</strong>를 누르면 글로 옮기고 요약까지 만듭니다. <span class=\"guide__tip\">서버 모드 + 받아쓰기 키 필요</span></li>" +
       "</ul>" +
       '<h3 class="guide__h">2. 분류</h3>' +
       '<table class="guide__table"><thead><tr><th>분류</th><th>이럴 때 고르세요</th></tr></thead><tbody>' +
@@ -2682,6 +2895,9 @@
           aiReady = !!(st && st.ai);
           sumReady = !!(st && st.summary);
           if (st && st.summaryProvider) sumName = st.summaryProvider;
+          sttReady = !!(st && st.stt);
+          if (st && st.sttProvider) sttName = st.sttProvider;
+          if (st && st.sttMaxMb) sttMaxMb = st.sttMaxMb;
           if (aiReady) {
             const inp = $("#ask-input");
             if (inp) inp.placeholder = "노트에게 물어보기 — AI 가 노트를 읽고 답합니다. 예: 최근 태양광 관련해서 나온 얘기 있어?";

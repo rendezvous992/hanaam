@@ -26,6 +26,9 @@ GitHub 에 푸시하면 Vercel 이 자동으로 배포합니다. 데이터베이
    | `XAI_API_KEY` | 노트 요약 | Grok(xAI) 키 — https://console.x.ai 에서 발급. 있으면 노트 요약·정리는 Grok 으로 합니다 |
    | `XAI_MODEL` | 선택 | Grok 모델 (기본 `grok-4`, 없으면 계정에서 쓸 수 있는 grok 모델로 자동 전환) |
    | `HANA_AI_MODEL` | 선택 | AI 리서치 모델 (기본 `claude-opus-5`) |
+   | `OPENAI_API_KEY` | 녹음 받아쓰기 | https://platform.openai.com — 녹음을 글로 옮깁니다(Whisper, 24MB·파일당). 없으면 크롬 실시간 받아쓰기만 됩니다 |
+   | `GROQ_API_KEY` | 선택 | https://console.groq.com — `OPENAI_API_KEY` 대신 쓸 수 있는 무료 한도형 받아쓰기 |
+   | `STT_MODEL` | 선택 | 받아쓰기 모델 (기본 `whisper-1`, Groq 는 `whisper-large-v3-turbo`) |
    | `TELEGRAM_BOT_TOKEN` | 선택 | 텔레그램 수집 봇 — 텔레그램 @BotFather 에서 무료 발급. 봇이 들어간 방의 메시지를 '텔레그램' 화면에 모음 |
 
 4. **Deployments → 최근 배포 → Redeploy** (환경변수는 다시 배포해야 반영)
@@ -79,7 +82,8 @@ python3 -m http.server 8000     # http://localhost:8000/
 | `static/shell.js` | 사이드바·시계·토스트·로그인 사용자·권한별 메뉴 |
 | `static/kit.js` | 공용: 저장소(서버/브라우저), 파일 조각 업로드, 모달, 날짜(KST), CSV |
 | `server/app.py` | 로그인·가입·계정 관리·노트·데이터 모음·파일·캘린더 구독(ICS) API |
-| `server/integrations.py` | AI 리서치(Claude), 예약 리서치, 시세, DART, 경제지표 |
+| `server/integrations.py` | AI 리서치(Claude), 예약 리서치, 시세, DART, 경제지표, 녹음 받아쓰기 |
+| `server/stt.py` | 녹음 자동 받아쓰기 (OpenAI 호환 Whisper) |
 | `server/db.py` | SQLite / Postgres 연결과 테이블 |
 | `api/index.py`, `vercel.json`, `scripts/build-public.mjs` | Vercel 배포 |
 | `deploy/` | 설치형 서버 스크립트 |
