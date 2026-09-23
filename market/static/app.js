@@ -140,10 +140,10 @@
     const rows = visibleRows();
     const tbody = $("#mv-body tbody");
     if (!watchlist.length) {
-      tbody.innerHTML = '<tr><td colspan="8"><p class="card__empty">아직 관심 종목이 없습니다. <button type="button" class="btn btn--primary btn--sm" data-wl-add>+ 관심 종목 추가</button></p></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7"><p class="card__empty">아직 관심 종목이 없습니다. <button type="button" class="btn btn--primary btn--sm" data-wl-add>+ 관심 종목 추가</button></p></td></tr>';
     } else if (!rows.length) {
       const why = st.list === "memo" ? "메모를 남긴 종목이 없습니다." : (st.list === "gainers" || st.list === "losers") && !quotes.size ? "시세가 있어야 상승·하락 종목을 고를 수 있습니다." : "조건에 맞는 종목이 없습니다.";
-      tbody.innerHTML = '<tr><td colspan="8"><p class="card__empty">' + esc(why) + "</p></td></tr>";
+      tbody.innerHTML = '<tr><td colspan="7"><p class="card__empty">' + esc(why) + "</p></td></tr>";
     } else {
       tbody.innerHTML = rows.map((r) => {
         const q = r.q;
@@ -155,8 +155,7 @@
           '<td class="mv__n' + (has ? "" : " is-dim") + '">' + (has ? K.num(q.price) : "—") + "</td>" +
           '<td class="mv__n" data-direction="' + d + '">' + (has ? signed(q.change) : "—") + "</td>" +
           '<td class="mv__n" data-direction="' + d + '">' + (has ? rate(q.changeRate) : "—") + "</td>" +
-          '<td class="mv__n is-dim">' + (has ? esc(statusLabel(q.status)) : session.server ? (r.code ? "—" : "코드 필요") : "—") + "</td>" +
-          '<td class="mv__n is-dim">' + (has ? esc(timeOf(q) || "—") : "—") + "</td>" +
+          '<td class="mv__n is-dim">' + (has ? esc(statusLabel(q.status) + (timeOf(q) ? " · " + timeOf(q) : "")) : session.server ? (r.code ? "—" : "코드 필요") : "—") + "</td>" +
           '<td class="mv__memo"><button type="button" class="mv__memo-btn" data-wl-memo="' + esc(r.id) + '" title="메모 고치기">' + (r.memo ? esc(r.memo) : '<span class="is-dim">+ 메모</span>') + "</button></td>" +
           '<td class="mv__n"><button type="button" class="btn btn--ghost btn--sm" data-wl-edit="' + esc(r.id) + '">수정</button> ' +
           '<button type="button" class="btn btn--danger btn--sm" data-wl-del="' + esc(r.id) + '">삭제</button></td></tr>';
