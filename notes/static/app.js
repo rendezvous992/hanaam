@@ -342,7 +342,46 @@
   /* ================================================================
    * 상태 · URL
    * ================================================================ */
-  const EMPTY_STATE = { company: "", category: "", q: "", from: "", to: "", type: "", author: "", review: false, page: 1 };
+  const EMPTY_STATE = { company: "", category: "", q: "", from: "", to: "", type: "", author: "", review: false, sectors: [], page: 1 };
+
+  /* ---------- 섹터: 종목 → 섹터 (모든 노트가 같은 표를 쓴다, 모음 "company-sectors") ---------- */
+  const SECTORS = ["반도체", "2차전지", "자동차", "IT·인터넷", "게임·엔터", "바이오·헬스케어", "조선·기계", "방산·우주", "화학·에너지", "철강·소재",
+    "건설·부동산", "금융", "소비재·유통", "통신·미디어", "운송·물류", "기타"];
+  const NO_SECTOR = "미지정";
+  const sectorStore = window.Kit ? window.Kit.collection("company-sectors") : null;
+  let sectorMap = new Map(); // 종목명 → { id, sector }
+  function sectorOf(n) {
+    const v = sectorMap.get(n.company);
+    return (v && v.sector) || NO_SECTOR;
+  }
+  async function loadSectors() {
+    if (!sectorStore) return;
+    try {
+      const rows = await sectorStore.list();
+      sectorMap = new Map(rows.map((r) => [r.company, { id: r.id, sector: r.sector }]));
+    } catch (e) {
+      /* 섹터를 못 불러와도 노트는 보여 준다 */
+    }
+  }
+  async function setSector(company, sector) {
+    if (!sectorStore || !company || company === "미지정") return;
+    const cur = sectorMap.get(company);
+    if ((cur ? cur.sector : "") === sector) return;
+    if (cur && !sector) {
+      await sectorStore.remove(cur.id);
+      sectorMap.delete(company);
+    } else if (cur) {
+      await sectorStore.update(cur.id, { company, sector });
+      sectorMap.set(company, { id: cur.id, sector });
+    } else if (sector) {
+      const rec = await sectorStore.create({ company, sector });
+      sectorMap.set(company, { id: rec.id, sector });
+    }
+  }
+  function sectorOptions(cur) {
+    const list = SECTORS.concat(cur && !SECTORS.includes(cur) ? [cur] : []);
+    return '<option value="">미지정</option>' + list.map((x) => '<option value="' + esc(x) + '"' + (x === cur ? " selected" : "") + ">" + esc(x) + "</option>").join("");
+  }
   let state = Object.assign({}, EMPTY_STATE);
 
   function readUrl() {
@@ -356,6 +395,7 @@
       type: p.get("type") || "",
       author: p.get("author") || "",
       review: p.get("review") === "1",
+      sectors: (p.get("sector") || "").split(",").map((x) => x.trim()).filter(Boolean),
       page: Math.max(1, parseInt(p.get("page"), 10) || 1),
     });
   }
@@ -365,6 +405,7 @@
       if (state[k]) p.set(k, state[k]);
     });
     if (state.review) p.set("review", "1");
+    if (state.sectors.length) p.set("sector", state.sectors.join(","));
     if (state.page > 1) p.set("page", String(state.page));
     const qs = p.toString();
     window.history.replaceState(null, "", window.location.pathname + (qs ? "?" + qs : "") + window.location.hash);
@@ -392,6 +433,7 @@
     if (state.type && n.type !== state.type) return false;
     if (state.author && n.author !== state.author) return false;
     if (!skip.review && state.review && !n.review) return false;
+    if (!skip.sector && state.sectors.length && !state.sectors.includes(sectorOf(n))) return false;
     const tokens = searchTokens(state.q);
     if (tokens.length) {
       const hay = haystack(n);
@@ -406,7 +448,7 @@
     return ["from", "to", "type", "author"].filter((k) => state[k]).length;
   }
   function anyFilter() {
-    return !!(state.company || state.category || state.q || state.review || detailFilterCount());
+    return !!(state.company || state.category || state.q || state.review || state.sectors.length || detailFilterCount());
   }
 
   /* ================================================================
@@ -473,6 +515,29 @@
     el.companyCount.textContent = String(counts.size);
   }
 
+  function renderSectors() {
+    const bar = $("#sector-bar");
+    if (!bar) return;
+    const pool = notes.filter((n) => matches(n, { sector: true }));
+    const counts = new Map();
+    pool.forEach((n) => counts.set(sectorOf(n), (counts.get(sectorOf(n)) || 0) + 1));
+    // 노트가 있는 섹터 + 체크해 둔 섹터를 보여 준다
+    const names = SECTORS.concat([NO_SECTOR]).filter((x) => counts.get(x) || state.sectors.includes(x));
+    Array.from(counts.keys()).forEach((x) => {
+      if (!names.includes(x)) names.splice(names.length - 1, 0, x);
+    });
+    bar.innerHTML =
+      '<span class="sector-bar__label">섹터</span>' +
+      '<div class="sector-bar__chips" role="group" aria-label="섹터로 거르기">' +
+      (names.length
+        ? names.map((x) => '<label class="sector-chip' + (state.sectors.includes(x) ? " is-on" : "") + (x === NO_SECTOR ? " sector-chip--none" : "") + '"><input type="checkbox" value="' + esc(x) + '"' +
+            (state.sectors.includes(x) ? " checked" : "") + "> " + esc(x) + ' <span class="sector-chip__count">' + (counts.get(x) || 0) + "</span></label>").join("")
+        : '<span class="sector-bar__empty">노트가 없습니다</span>') +
+      "</div>" +
+      (state.sectors.length ? '<button type="button" class="sector-bar__btn" data-sector-clear>체크 해제</button>' : "") +
+      '<button type="button" class="sector-bar__btn" data-sector-edit>종목별 섹터 지정</button>';
+  }
+
   function renderTabs() {
     const pool = notes.filter((n) => matches(n, { category: true }));
     $$(".doc-tab", el.docTabs).forEach((tab) => {
@@ -522,6 +587,7 @@
       '\n      <span class="note-card__company">' + esc(companyLabel(n)) + "</span>" +
       '\n      <span class="cat-chip cat-chip--' + esc(n.category) + '">' + esc(CAT_LABEL[n.category] || "기타") + "</span>" +
       (n.type ? '\n      <span class="type-chip">' + esc(n.type) + "</span>" : "") +
+      (sectorOf(n) !== NO_SECTOR ? '\n      <span class="sector-tag">' + esc(sectorOf(n)) + "</span>" : "") +
       (clip.length ? '\n      <span class="note-card__clip">' + esc(clip.join(" · ")) + "</span>" : "") +
       '\n      <span class="note-card__author">' + esc(n.author) + "</span>" +
       '\n      <span class="note-card__date">' + esc(dotDate(n.date)) + "</span>" +
@@ -668,6 +734,7 @@
 
   function render() {
     renderFilters();
+    renderSectors();
     renderCompanies();
     renderTabs();
     renderList();
@@ -1158,6 +1225,8 @@
       '<input class="input" name="ticker" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="6자리" value="' + esc(n.ticker || "") + '"></label>' +
       "</div>" +
       '<div class="field"><span class="field__label">분류 <em class="required">*</em></span><div class="chip-group">' + categoryChips("category", n.category) + "</div></div>" +
+      '<label class="field"><span class="field__label">섹터 <span class="field__label-note">— 종목마다 한 번만 정하면 그 종목의 모든 노트에 적용됩니다</span></span>' +
+      '<select class="input" name="sector">' + sectorOptions(n.company ? (sectorMap.get(n.company) || {}).sector || "" : "") + "</select></label>" +
       '<div class="field-row field-row--three">' +
       '<label class="field"><span class="field__label">유형</span><select class="input" name="type">' +
       Array.from(new Set(TYPES.concat(n.type ? [n.type] : [])))
@@ -1378,6 +1447,7 @@
           review: editing && existing.review && company === "미지정" ? existing.review : null,
         };
         target = editing ? await store.update(existing, data) : await store.create(data);
+        await setSector(company, f("sector").value).catch((e) => toast("섹터를 저장하지 못했습니다: " + e.message, true));
       } catch (err) {
         toast("저장하지 못했습니다: " + err.message, true);
         submit.disabled = false;
@@ -2130,6 +2200,66 @@
     setState(Object.assign({}, EMPTY_STATE));
   }
   $("#reset-btn").addEventListener("click", resetAll);
+
+  // 섹터 체크
+  $("#sector-bar").addEventListener("change", (e) => {
+    const box = e.target.closest('input[type="checkbox"]');
+    if (!box) return;
+    const set = new Set(state.sectors);
+    if (box.checked) set.add(box.value);
+    else set.delete(box.value);
+    setState({ sectors: Array.from(set) });
+  });
+  $("#sector-bar").addEventListener("click", (e) => {
+    if (e.target.closest("[data-sector-clear]")) setState({ sectors: [] });
+    else if (e.target.closest("[data-sector-edit]")) openSectorEditor();
+  });
+  // 종목별 섹터 한꺼번에 지정
+  function openSectorEditor() {
+    const companies = Array.from(new Set(notes.map((n) => n.company).filter((c) => c && c !== "미지정"))).sort((a, b) => a.localeCompare(b, "ko"));
+    const m = openModal({
+      title: "종목별 섹터 지정",
+      size: "modal--wide",
+      html:
+        '<form class="modal__body" novalidate>' +
+        '<p class="hint">한 번 정하면 그 종목의 모든 노트가 해당 섹터로 묶입니다. 섹터가 없는 종목만 보려면 위 체크에서 ‘미지정’을 고르세요.</p>' +
+        '<input class="input input--compact" data-sector-find placeholder="종목 찾기" style="margin:10px 0">' +
+        '<div class="sector-edit-list">' +
+        (companies.length
+          ? companies.map((c) => '<label class="sector-edit-row" data-name="' + esc(c.toLowerCase()) + '"><span>' + esc(c) + '</span><select class="input input--compact" data-company="' + esc(c) + '">' + sectorOptions((sectorMap.get(c) || {}).sector || "") + "</select></label>").join("")
+          : '<p class="hint">아직 노트가 없습니다.</p>') +
+        "</div>" +
+        '<div class="modal__footer"><div class="modal__footer-right"><button type="button" class="btn btn--ghost" data-close>닫기</button><button type="submit" class="btn btn--primary">저장</button></div></div></form>',
+    });
+    const box = m.modal;
+    const form = box.querySelector("form");
+    box.querySelector("[data-close]").addEventListener("click", () => m.close());
+    box.querySelector("[data-sector-find]").addEventListener("input", (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      box.querySelectorAll(".sector-edit-row").forEach((r) => (r.hidden = q && !r.getAttribute("data-name").includes(q)));
+    });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = form.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      let changed = 0;
+      try {
+        for (const sel of form.querySelectorAll("select[data-company]")) {
+          const c = sel.getAttribute("data-company");
+          if (((sectorMap.get(c) || {}).sector || "") !== sel.value) {
+            await setSector(c, sel.value);
+            changed++;
+          }
+        }
+        toast(changed ? "섹터 " + changed + "곳을 저장했습니다." : "바뀐 것이 없습니다.");
+        m.close(true);
+        render();
+      } catch (err) {
+        btn.disabled = false;
+        toast("섹터를 저장하지 못했습니다: " + err.message, true);
+      }
+    });
+  }
   el.resultsClear.addEventListener("click", resetAll);
 
   // 종목 레일
@@ -2275,6 +2405,7 @@
       toast("노트를 불러오지 못했습니다: " + err.message, true);
       notes = [];
     }
+    await loadSectors();
     render();
     openFromHash();
   })();

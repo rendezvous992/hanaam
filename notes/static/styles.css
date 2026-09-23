@@ -896,3 +896,22 @@
 .approve-bar__head { font-size: 13px; font-weight: 700; color: var(--text-strong); }
 
 .approve-bar__why { font-size: 12.5px; color: var(--text); }a.ask__save { display: inline-block; text-decoration: none; }
+
+/* 섹터 체크 */
+.sector-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin: 0 0 14px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.sector-bar__label { font-size: 12px; font-weight: 700; color: var(--text-strong); }
+.sector-bar__chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; }
+.sector-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; font-size: 12.5px; color: var(--text); background: var(--surface); cursor: pointer; user-select: none; }
+.sector-chip input { width: 14px; height: 14px; margin: 0; accent-color: var(--primary); }
+.sector-chip:hover { border-color: var(--primary); }
+.sector-chip.is-on { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+.sector-chip--none { border-style: dashed; }
+.sector-chip__count { color: var(--text-muted); font-size: 11px; }
+.sector-bar__btn { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-sm); padding: 5px 10px; font-size: 12px; color: var(--text); cursor: pointer; }
+.sector-bar__btn:hover { border-color: var(--primary); color: var(--primary); }
+.sector-bar__empty { font-size: 12px; color: var(--text-muted); }
+.sector-tag { font-size: 11px; padding: 1px 7px; border-radius: 4px; background: var(--primary-soft); color: var(--primary); }
+.sector-edit-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 14px; max-height: 55vh; overflow-y: auto; }
+.sector-edit-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.sector-edit-row[hidden] { display: none; }
+.sector-edit-row select { width: 140px; appearance: auto; }
