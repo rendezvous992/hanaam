@@ -1084,6 +1084,130 @@ def tg_record(update: dict[str, Any]) -> Optional[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# 종목 종합 평가 (S.E 의 '종합 평가' 와 같은 형식) — 우리 노트·IR 일정·공시·시세를 근거로 AI 가 쓴다
+# ---------------------------------------------------------------------------
+
+ANALYSIS_PROMPT = """당신은 한국 자산운용사의 시니어 애널리스트입니다. 한 종목의 '종합 평가'를 씁니다.
+- 반드시 아래 <data> 의 자료(우리 팀 노트, IR 일정, 공시, 시세)를 우선 근거로 씁니다. 웹 검색이 가능하면 최신 실적·컨센서스·수급을 확인하고 기준 날짜를 밝힙니다.
+- 숫자에는 단위와 기준 시점을 붙이고, 증권사 한 곳의 전망은 '특정 증권사 전망'이라고 구분합니다.
+- 추정·불확실한 내용은 분명히 표시하고, 매수·매도 권유 대신 판단 근거와 확인할 조건을 씁니다.
+- 출력은 설명 없이 JSON 한 개만:
+{"headline": "한 줄 결론(40자 안팎)",
+ "summary": "3~4문장 요약",
+ "stance": "긍정" | "중립" | "부정",
+ "reasons": ["판단 근거 1", "판단 근거 2", "판단 근거 3"],
+ "checks": ["확인할 조건 1", "확인할 조건 2", "확인할 조건 3"],
+ "tags": ["짧은 태그", "최대 4개"],
+ "basis": "사용한 자료의 기준 시점 한 줄 (예: 2026년 2분기 실적 · 9월 21일 수급 기준)",
+ "reviewBy": "YYYY-MM-DD (다시 봐야 할 날짜: 다음 실적 발표·주요 일정 등)"}"""
+
+
+def claude_web_text(system: str, user: str) -> tuple[str, list[dict[str, str]], str]:
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=_env("ANTHROPIC_API_KEY"), timeout=240.0, max_retries=1)
+    params: dict[str, Any] = dict(
+        model=_env("HANA_AI_MODEL") or "claude-opus-5", max_tokens=12000, system=system, thinking={"type": "adaptive"},
+        betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+        tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 5, "user_location": {"type": "approximate", "country": "KR", "timezone": "Asia/Seoul"}}],
+    )
+    messages: list[dict[str, Any]] = [{"role": "user", "content": user}]
+    response = None
+    for _ in range(4):
+        response = client.beta.messages.create(messages=messages, **params)
+        if response.stop_reason != "pause_turn":
+            break
+        messages = messages + [{"role": "assistant", "content": response.content}]
+    assert response is not None
+    if response.stop_reason == "refusal":
+        raise ValueError("이 종목은 분석할 수 없다는 응답을 받았습니다.")
+    web, seen, texts = [], set(), []
+    for block in response.content:
+        if block.type == "text":
+            texts.append(block.text)
+            for c in getattr(block, "citations", None) or []:
+                url = getattr(c, "url", None)
+                if url and url not in seen:
+                    seen.add(url)
+                    web.append({"type": "web", "label": getattr(c, "title", None) or url, "url": url})
+    return "".join(texts), web, "Claude"
+
+
+def parse_analysis(text: str) -> dict[str, Any]:
+    m = re.search(r"\{.*\}", text or "", re.S)
+    if not m:
+        raise ValueError("AI 응답을 읽지 못했습니다. 다시 시도해 주세요.")
+    d = json.loads(m.group(0))
+    stance = d.get("stance") if d.get("stance") in ("긍정", "중립", "부정") else "중립"
+    lst = lambda k, n: [str(x).strip()[:400] for x in (d.get(k) or []) if str(x).strip()][:n]  # noqa: E731
+    return {
+        "headline": str(d.get("headline") or "").strip()[:120], "summary": str(d.get("summary") or "").strip()[:1500], "stance": stance,
+        "reasons": lst("reasons", 4), "checks": lst("checks", 4), "tags": lst("tags", 4), "basis": str(d.get("basis") or "").strip()[:200],
+        "reviewBy": str(d.get("reviewBy") or "")[:10] if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(d.get("reviewBy") or "")[:10]) else "",
+    }
+
+
+def build_analysis(conn_factory, name: str, code: str) -> dict[str, Any]:
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    sources: list[dict[str, str]] = []
+    parts: list[str] = [f"<company name=\"{name}\" code=\"{code}\" today=\"{today}\">"]
+    with conn_factory() as conn:
+        notes = conn.all("SELECT id, date, title, author, type, body FROM notes WHERE company = ? ORDER BY date DESC LIMIT 15", (name,))
+        evs = [json.loads(r["data"]) for r in conn.all("SELECT data FROM records WHERE collection = 'ir-events'")]
+    evs = [e for e in evs if name and name in str(e.get("companies") or "")]
+    evs.sort(key=lambda e: e.get("date") or "")
+    if notes:
+        parts.append("<notes>")
+        for n in notes:
+            body = re.sub(r"\s+", " ", n["body"] or "")[:2500]
+            parts.append(f"- {n['date']} [{n['type']}] {n['title']} ({n['author']}): {body}")
+        parts.append("</notes>")
+        sources.append({"type": "note", "label": f"우리 팀 노트 {len(notes)}건 (최근 {notes[0]['date']})"})
+    if evs:
+        parts.append("<ir_events>")
+        for e in evs[-12:]:
+            parts.append(f"- {e.get('date')} {e.get('time') or ''} {e.get('type')} {e.get('title') or ''} {e.get('brokers') or ''}")
+        parts.append("</ir_events>")
+        sources.append({"type": "ir", "label": f"IR 일정 {len(evs)}건"})
+    if code and _env("DART_API_KEY"):
+        try:
+            corp = _dart_corp_codes().get(code)
+            if corp:
+                end = datetime.now(KST)
+                rows = _dart_list({"corp_code": corp["corp_code"], "bgn_de": (end - timedelta(days=120)).strftime("%Y%m%d"), "end_de": end.strftime("%Y%m%d")})[:30]
+                if rows:
+                    parts.append("<disclosures>")
+                    parts += [f"- {d.get('rcept_dt')} {d.get('report_nm', '').strip()}" for d in rows]
+                    parts.append("</disclosures>")
+                    sources.append({"type": "dart", "label": f"DART 공시 {len(rows)}건 (최근 120일)"})
+        except Exception:  # noqa: BLE001 — 공시가 없어도 평가는 쓴다
+            pass
+    if code:
+        try:
+            q = quotes([code])
+            if q:
+                x = q[0]
+                parts.append(f"<quote price=\"{x.get('price')}\" change_rate=\"{x.get('changeRate')}\" time=\"{x.get('time')}\"/>")
+                sources.append({"type": "quote", "label": f"시세 {x.get('price')}원 ({x.get('time') or today})"})
+        except Exception:  # noqa: BLE001
+            pass
+    parts.append("</company>")
+    data = "\n".join(parts)
+    user = f"<data>\n{data}\n</data>\n\n{name}({code}) 종합 평가를 JSON 으로 써 주세요."
+    if _env("ANTHROPIC_API_KEY"):
+        text, web, provider = claude_web_text(ANALYSIS_PROMPT, user)
+        sources += web[:8]
+    elif _env("XAI_API_KEY"):
+        text, provider = grok_text(ANALYSIS_PROMPT, user, max_tokens=4000), "Grok"
+    else:
+        raise GrokError("AI 키가 없습니다. 관리자가 ANTHROPIC_API_KEY 또는 XAI_API_KEY 를 넣어야 합니다.")
+    out = parse_analysis(text)
+    out.update({"name": name, "code": code, "sources": sources, "provider": provider, "createdAt": now_iso(),
+                "noteCount": len(notes), "lastNoteDate": notes[0]["date"] if notes else ""})
+    return out
+
+
+# ---------------------------------------------------------------------------
 # 경제지표 (EODHD)
 # ---------------------------------------------------------------------------
 
@@ -1520,6 +1644,48 @@ def register(app: FastAPI, require_user, has_feature, connect) -> None:
         if not out.get("ok"):
             raise HTTPException(400, "텔레그램이 거절했습니다: " + str(out.get("description") or "알 수 없는 오류"))
         return {"ok": True, "url": url}
+
+    # --- 종목 종합 평가 -------------------------------------------------------
+
+    def _ana_id(name: str, code: str) -> str:
+        return (code if re.fullmatch(r"[0-9A-Z]{6}", code or "") else "n-" + _hashlib.sha1(name.encode()).hexdigest()[:16])
+
+    @app.get("/api/company/analysis")
+    def api_company_analysis(request: Request, name: str = "", code: str = "") -> Any:
+        require_user(request)
+        with connect() as conn:
+            row = conn.one("SELECT data FROM records WHERE collection = 'company-analysis' AND id = ?", (_ana_id(name, code),))
+            newest = conn.one("SELECT MAX(date) AS d FROM notes WHERE company = ?", (name,)) if name else None
+        return {"analysis": json.loads(row["data"]) if row else None, "lastNoteDate": (newest["d"] or "") if newest else "",
+                "ai": bool(_env("ANTHROPIC_API_KEY") or _env("XAI_API_KEY"))}
+
+    @app.post("/api/company/analysis")
+    async def api_company_analysis_run(request: Request) -> Any:
+        user = require_user(request)
+        if not has_feature(user, "ai_research"):
+            raise HTTPException(403, "종합 평가는 'AI 리서치' 권한이 있어야 만들 수 있습니다.")
+        data = await request.json()
+        name = str((data or {}).get("name") or "").strip()[:60]
+        code = str((data or {}).get("code") or "").strip().upper()[:6]
+        if not name:
+            raise HTTPException(400, "종목을 골라 주세요.")
+        if not (_env("ANTHROPIC_API_KEY") or _env("XAI_API_KEY")):
+            return not_connected("AI", "ANTHROPIC_API_KEY 또는 XAI_API_KEY")
+        import anyio
+
+        try:
+            out = await anyio.to_thread.run_sync(lambda: build_analysis(connect, name, code))
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"detail": ai_error_message(e)}, status_code=502)
+        out["createdBy"] = user["display_name"]
+        rid = _ana_id(name, code)
+        with connect() as conn:
+            blob = json.dumps(out, ensure_ascii=False)
+            if conn.one("SELECT 1 FROM records WHERE collection = 'company-analysis' AND id = ?", (rid,)):
+                conn.execute("UPDATE records SET data = ?, updated_at = ? WHERE collection = 'company-analysis' AND id = ?", (blob, now_iso(), rid))
+            else:
+                conn.execute("INSERT INTO records(collection, id, data, created_by, created_at) VALUES ('company-analysis', ?, ?, ?, ?)", (rid, blob, user["id"], now_iso()))
+        return {"analysis": out}
 
     # --- 경제지표 -----------------------------------------------------------
 

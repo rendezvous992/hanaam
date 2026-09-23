@@ -535,6 +535,7 @@
 
     pageEl.innerHTML =
       '<p class="cpage__hint"><a href="/company/" data-go-home>← 색인으로</a> · 최근 본 종목에 저장했습니다.</p>' +
+      '<section class="cana" id="c-ana"><p class="cana__loading">종합 평가를 불러오는 중…</p></section>' +
       '<section class="cpage__main"><div class="cpanel">' +
       '<div class="cpanel__sec" id="cq">' +
       '<div class="cq__top"><div><span class="cq__name">' + esc(c.name) + '</span><span class="cq__code">' + esc([c.code || "종목코드 없음", mk].filter(Boolean).join(" · ")) + "</span></div>" +
@@ -564,6 +565,7 @@
       '<a class="cq__more" href="/notes/?company=' + encodeURIComponent(c.name) + '">노트 쓰기·전체 보기 →</a></div>' +
       '<div id="c-notes"></div></section>';
     renderNotes(cn);
+    loadAnalysis(c);
     loadQuote(c);
     loadDart(c);
   }
@@ -704,6 +706,68 @@
       K.toast(v ? name + " 섹터를 '" + v + "'(으)로 정했습니다." : "섹터를 지웠습니다.");
     } catch (err) {
       K.toast(err.message, true);
+    }
+  });
+
+  /* ---------- 종합 평가 (S.E 방식: 판단 근거·확인할 조건·의견) ---------- */
+  const STANCE_CLASS = { 긍정: "is-pos", 중립: "is-neu", 부정: "is-neg" };
+  function analysisHtml(a, meta) {
+    const days = a.createdAt ? K.diffDays(K.isoKst(a.createdAt).slice(0, 10), K.today()) : 0;
+    const stale = (a.reviewBy && a.reviewBy < K.today()) || days > 30 || (meta.lastNoteDate && a.lastNoteDate && meta.lastNoteDate > a.lastNoteDate);
+    return (
+      '<div class="cana__meta"><p>' + esc(a.basis || "") + (a.basis ? " · " : "") + esc(K.isoKst(a.createdAt)) + " KST 작성 (" + esc(a.provider || "AI") + (a.createdBy ? " · " + esc(a.createdBy) : "") + "). 아래 내용은 이 시점의 저장된 판단이며 실시간으로 다시 쓰지 않습니다.</p>" +
+      (stale ? '<p class="cana__warn">업데이트 검토 시점 경과 · 과거 분석을 표시 중입니다. ' + (meta.lastNoteDate > (a.lastNoteDate || "") ? "새 노트가 있습니다. " : "") + "새 공시·실적·가격 변화를 확인한 뒤 다시 분석을 요청하세요.</p>" : "") +
+      '<details class="cana__src"><summary>사용한 자료 · ' + (a.sources || []).length + "개</summary><ul>" +
+      (a.sources || []).map((x) => "<li>" + (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener noreferrer">' + esc(x.label) + "</a>" : esc(x.label)) + "</li>").join("") + "</ul></details></div>" +
+      '<div class="cana__card"><div class="cana__kicker">업무공간 · 종합 평가</div><h3 class="cana__head">' + esc(a.headline) + "</h3>" +
+      '<p class="cana__sum">' + esc(a.summary) + "</p>" +
+      '<div class="cana__cols"><div><h4>판단 근거</h4><ul>' + (a.reasons || []).map((x) => "<li>" + esc(x) + "</li>").join("") + "</ul></div>" +
+      "<div><h4>확인할 조건</h4><ul>" + (a.checks || []).map((x) => "<li>" + esc(x) + "</li>").join("") + "</ul></div></div>" +
+      '<div class="cana__foot"><span class="cana__stance ' + (STANCE_CLASS[a.stance] || "is-neu") + '">' + esc(a.stance) + '</span><span class="cana__by">AI 정성평가</span>' +
+      '<span class="cana__tags">' + (a.tags || []).map((t) => '<span class="cana__tag">' + esc(t) + "</span>").join("") + "</span>" +
+      '<button type="button" class="btn btn--ghost btn--sm" data-ana-run>다시 분석</button></div></div>'
+    );
+  }
+  async function loadAnalysis(c) {
+    const box = $("#c-ana");
+    if (!box) return;
+    if (!session || !session.server) {
+      box.innerHTML = '<div class="cana__empty"><b>종합 평가</b> — 서버(로그인) 모드에서 AI 가 우리 노트·IR 일정·공시·시세를 근거로 판단 근거와 확인할 조건을 정리합니다. 지금은 <button type="button" class="btn btn--ghost btn--sm" data-gpt-analyze>챗GPT로 기업 분석</button>을 쓰세요.</div>';
+      return;
+    }
+    try {
+      const out = await session.api("GET", "/api/company/analysis?name=" + encodeURIComponent(c.name) + "&code=" + encodeURIComponent(c.code || ""));
+      if (current !== c) return;
+      const canRun = (session.me.permissions || []).includes("ai_research");
+      if (out.analysis) {
+        box.innerHTML = analysisHtml(out.analysis, out);
+        if (!canRun || !out.ai) box.querySelectorAll("[data-ana-run]").forEach((b) => b.remove());
+      } else {
+        box.innerHTML = '<div class="cana__empty"><b>종합 평가</b> — 아직 만든 평가가 없습니다. ' +
+          (out.ai && canRun
+            ? '<button type="button" class="btn btn--primary btn--sm" data-ana-run>AI 종합 평가 만들기</button> <span>(우리 노트·IR 일정·공시·시세 근거, 1~2분)</span>'
+            : !out.ai
+              ? "관리자가 AI 키(ANTHROPIC_API_KEY 또는 XAI_API_KEY)를 넣으면 만들 수 있습니다. 지금은 <button type=\"button\" class=\"btn btn--ghost btn--sm\" data-gpt-analyze>챗GPT로 기업 분석</button>을 쓰세요."
+              : "만들려면 'AI 리서치' 권한이 필요합니다.") + "</div>";
+      }
+    } catch (err) {
+      box.innerHTML = '<div class="cana__empty">' + esc(err.message) + "</div>";
+    }
+  }
+  pageEl.addEventListener("click", async (e) => {
+    const run = e.target.closest("[data-ana-run]");
+    if (!run || !current) return;
+    const c = current;
+    run.disabled = true;
+    run.textContent = "분석하는 중… (1~2분)";
+    try {
+      const out = await session.api("POST", "/api/company/analysis", { name: c.name, code: c.code || "" });
+      if (current === c) $("#c-ana").innerHTML = analysisHtml(out.analysis, { lastNoteDate: out.analysis.lastNoteDate });
+      K.toast("종합 평가를 저장했습니다.");
+    } catch (err) {
+      K.toast(err.message, true);
+      run.disabled = false;
+      run.textContent = "다시 시도";
     }
   });
 

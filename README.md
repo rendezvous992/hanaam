@@ -26,6 +26,7 @@ GitHub 에 푸시하면 Vercel 이 자동으로 배포합니다. 데이터베이
    | `XAI_API_KEY` | 노트 요약 | Grok(xAI) 키 — https://console.x.ai 에서 발급. 있으면 노트 요약·정리는 Grok 으로 합니다 |
    | `XAI_MODEL` | 선택 | Grok 모델 (기본 `grok-4`, 없으면 계정에서 쓸 수 있는 grok 모델로 자동 전환) |
    | `HANA_AI_MODEL` | 선택 | AI 리서치 모델 (기본 `claude-opus-5`) |
+   | `TELEGRAM_BOT_TOKEN` | 선택 | 텔레그램 수집 봇 — 텔레그램 @BotFather 에서 무료 발급. 봇이 들어간 방의 메시지를 '텔레그램' 화면에 모음 |
 
 4. **Deployments → 최근 배포 → Redeploy** (환경변수는 다시 배포해야 반영)
 5. 사이트 주소 → `/signup` 에서 첫 계정을 만들면 **최고 관리자**가 됩니다. 이후 가입 신청은 **계정 관리**에서 승인합니다.
