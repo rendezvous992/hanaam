@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "codebase-memory-mcp": {
+      "command": "${HANAAM_CBM_CMD:-.claude/bin/codebase-memory-mcp.sh}"
+    }
+  }
+}
