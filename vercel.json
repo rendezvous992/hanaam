@@ -49,6 +49,26 @@
           "value": "microphone=(self), camera=(), geolocation=()"
         }
       ]
+    },
+    {
+      "source": "/plush/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        },
+        {
+          "key": "Service-Worker-Allowed",
+          "value": "/plush/"
+        }
+      ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/plush",
+      "destination": "/plush/",
+      "permanent": false
     }
   ]
 }
