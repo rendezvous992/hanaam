@@ -12,7 +12,13 @@ let v, refr, glow, ad;          // 상태 (ad: 적응형 임계값 증분)
 let readoutMask = null;         // 뉴런별 비트마스크: 어떤 판독 그룹 소속인지
 let readoutCounts = null;       // 그룹별 프레임 내 스파이크 수
 let nReadouts = 0;
-let stimActive = {};            // key -> Uint32Array (뉴런 인덱스)
+let stimActive = {};            // key -> { idx, rate } 또는 { idx, rates(뉴런별 Hz) }
+let driveSets = {};             // key -> Uint32Array — 시각 입력처럼 뉴런별 발화율로 매 프레임 갱신
+let watchPos = null;            // 뉴런 → 감시 목록 위치(-1 = 감시 안 함)
+let watchCounts = null;         // 감시 뉴런별 스파이크 수 (프레임/프로브 단위)
+let probing = false;            // 프로브 중에는 모든 뉴런 발화 수를 센다(가소성용)
+let probeCounts = null;
+let elig = null;                // 시냅스별 적격 흔적: 함께 발화한 정도의 누적 (3요소 학습)
 let stimRate = 50;              // Hz, 자극 뉴런의 강제 발화율
 let ethanol = 0;                // 0..1
 let nicotine = 0;               // 0..1 — 니코틴성 ACh 수용체 작용제 근사: 흥분성 시냅스 증폭
@@ -51,7 +57,8 @@ onmessage = (e) => {
     n = m.n;
     indptr = new Uint32Array(m.indptr);
     targets = new Uint32Array(m.targets);
-    weights = new Int16Array(m.weights);
+    // 가소성(보상 학습)으로 소수 단위 변화를 담기 위해 실수로 보관
+    weights = Float32Array.from(new Int16Array(m.weights));
     v = new Float32Array(n);
     refr = new Uint8Array(n);
     glow = new Float32Array(n);
@@ -65,6 +72,33 @@ onmessage = (e) => {
       readoutCounts = new Float64Array(nReadouts);
     }
     loop();
+  } else if (m.type === 'driveSet') {
+    driveSets[m.key] = new Uint32Array(m.indices);
+  } else if (m.type === 'drive') {
+    // rates: driveSets[key]와 같은 길이의 Float32Array(Hz). null이면 입력 끔
+    if (m.rates) stimActive[m.key] = { idx: driveSets[m.key], rates: new Float32Array(m.rates) };
+    else delete stimActive[m.key];
+  } else if (m.type === 'watch') {
+    watchPos = new Int32Array(n).fill(-1);
+    m.indices.forEach((i, k) => { watchPos[i] = k; });
+    watchCounts = new Uint16Array(m.indices.length);
+  } else if (m.type === 'probe') {
+    // 뇌를 초기화하고 입력을 ticks 동안만 보여준 뒤 감시 뉴런 반응을 돌려준다.
+    // 활동이 수 ms 만에 뇌 전체로 퍼지므로 위치 정보가 남은 첫 반응 파동만 쓴다.
+    v.fill(0); refr.fill(0); ad.fill(0);
+    const saved = stimActive;
+    stimActive = { probe: { idx: driveSets[m.key], rates: new Float32Array(m.rates) } };
+    watchCounts.fill(0);
+    if (m.learn) { if (!probeCounts) probeCounts = new Uint16Array(n); probeCounts.fill(0); probing = true; }
+    for (let t = 0; t < m.ticks; t++) step();
+    stimActive = saved;
+    if (m.learn) { probing = false; accumulateEligibility(); }
+    const counts = watchCounts.slice();
+    watchCounts.fill(0);
+    postMessage({ type: 'probeResult', id: m.id, counts }, [counts.buffer]);
+  } else if (m.type === 'reinforce') {
+    // 도파민 신호 r(+1 보상 / -1 처벌)로, 이번 판에 함께 발화한 시냅스를 강화·약화
+    postMessage({ type: 'reinforced', id: m.id, ...reinforce(m.r, m.eta || 0.3) });
   } else if (m.type === 'stim') {
     // rate 미지정 시 전역 stimRate 사용 (명령 뉴런은 강한 고정 자극)
     if (m.on) stimActive[m.key] = { idx: new Uint32Array(m.indices), rate: m.rate || 0 };
@@ -83,6 +117,39 @@ onmessage = (e) => {
 };
 
 let spareBuf = null;
+
+// 프로브 동안 시냅스 앞·뒤 뉴런이 함께 발화한 만큼 적격 흔적을 쌓는다.
+function accumulateEligibility() {
+  if (!elig) elig = new Float32Array(targets.length);
+  for (let i = 0; i < n; i++) {
+    const ci = probeCounts[i];
+    if (!ci) continue;
+    for (let j = indptr[i], b = indptr[i + 1]; j < b; j++) {
+      const cj = probeCounts[targets[j]];
+      if (cj) elig[j] += ci * cj;
+    }
+  }
+}
+
+// 3요소 학습: Δw = η · r · (적격 흔적 / 최대값) · w. 부호(흥분/억제)는 유지된다.
+function reinforce(r, eta) {
+  if (!elig) return { changed: 0, meanChange: 0 };
+  let mx = 0;
+  for (let j = 0; j < elig.length; j++) if (elig[j] > mx) mx = elig[j];
+  let changed = 0, sum = 0;
+  if (mx > 0) {
+    for (let j = 0; j < elig.length; j++) {
+      const e = elig[j];
+      if (!e) continue;
+      const f = Math.max(0.5, Math.min(1.5, 1 + eta * r * Math.sqrt(e / mx)));
+      sum += Math.abs(weights[j] * (f - 1));
+      weights[j] *= f;
+      changed++;
+    }
+  }
+  elig.fill(0);
+  return { changed, meanChange: changed ? sum / changed : 0 };
+}
 
 function step() {
   const eth = ethanol;
@@ -114,8 +181,15 @@ function step() {
   const p0 = stimRate * DT / 1000;
   for (const key in stimActive) {
     const s = stimActive[key];
-    const p = s.rate ? s.rate * DT / 1000 : p0;
     const idx = s.idx;
+    if (s.rates) {
+      const rr = s.rates, kk = DT / 1000;
+      for (let k = 0; k < idx.length; k++) {
+        if (rr[k] > 0 && frand() < rr[k] * kk) { const i = idx[k]; v[i] = thrEff + ad[i] + 1; }
+      }
+      continue;
+    }
+    const p = s.rate ? s.rate * DT / 1000 : p0;
     for (let k = 0; k < idx.length; k++) {
       const i = idx[k];
       if (frand() < p) v[i] = thrEff + ad[i] + 1;
@@ -131,6 +205,8 @@ function step() {
       refr[i] = REFR_TICKS;
       ad[i] += ADAPT_INC;
       glow[i] = 1;
+      if (watchPos !== null && watchPos[i] >= 0) watchCounts[watchPos[i]]++;
+      if (probing) probeCounts[i]++;
       if (readoutMask !== null && readoutMask[i]) {
         const mb = readoutMask[i];
         for (let g = 0; g < nReadouts; g++) if (mb & (1 << g)) readoutCounts[g]++;
@@ -168,6 +244,8 @@ function loop() {
   const simMs = running ? ticksPerFrame * DT : 0;
   const counts = readoutCounts ? Array.from(readoutCounts) : null;
   if (readoutCounts) readoutCounts.fill(0);
+  let watch = null;
+  if (watchCounts) { watch = watchCounts.slice(); watchCounts.fill(0); }
   postMessage({
     type: 'frame',
     glow: buf.buffer,
@@ -177,7 +255,8 @@ function loop() {
     simMs,
     active,
     counts,
-  }, [buf.buffer]);
+    watch,
+  }, watch ? [buf.buffer, watch.buffer] : [buf.buffer]);
 
   setTimeout(loop, 12);
 }

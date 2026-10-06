@@ -15,6 +15,8 @@ const RAIL_X = STAND_X + 1.15;
 const RAIL_Y = 2.15;
 const Y0 = 0.86;          // 서 있을 때 몸 높이
 const STRIDE = 0.5;       // 보폭(디딤 구간 동안 발이 몸에 대해 미끄러지는 거리)
+const TV_X = 1.75;        // TV 위치
+const WATCH_X = -0.95;    // TV 앞 시청 자리
 
 function windowTexture() {
   // 밤 건물 외벽: 창문 격자, 대부분 꺼져 있고 몇 개만 따뜻하게 켜짐
@@ -77,6 +79,10 @@ export class Fly3D {
     this.balconyO = 0;
     this.bathT = 0;            // 욕조에 들어가 있는 정도 0..1
     this.tubO = 0;
+    this.tvOn = false;         // 실험실 화면(TV/탁구) 켜짐
+    this.tvO = 0;
+    this.watchT = 0;
+    this.tvLabel = '';
     this.rates = { fwd: 0, back: 0, jump: 0, prob: 0, dn: 0, motor: 0, brain: 0 };
     this.s = { fwd: 0, back: 0, jump: 0, prob: 0 };
     this.behavior = '대기';
@@ -333,7 +339,44 @@ export class Fly3D {
     tubG.add(shell, rimT, tubBottom, this.waterMesh, tubGlass);
     tubG.position.set(TUB_POS, 0, 0.05);
     scene.add(mkFadeGroup(tubG));
+
+    // ── TV (실험실): 화면 텍스처 = 초파리 광수용체에 들어가는 바로 그 캔버스 ──
+    const tvG = this.tvG = new THREE.Group();
+    const tvMat = new THREE.MeshStandardMaterial({ color: 0x1b2030, roughness: 0.4, metalness: 0.3 });
+    const tvBox = new THREE.Mesh(new THREE.BoxGeometry(2.9, 2.2, 0.16), tvMat);
+    tvBox.position.y = 2.15; tvBox.castShadow = true;
+    const tvStand = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.05), tvMat);
+    tvStand.position.y = 0.55;
+    const tvBase = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.06, 0.5), tvMat);
+    tvBase.position.y = 0.03;
+    this.screenMat = new THREE.MeshBasicMaterial({ color: 0x0a0c12 });
+    this.screenMat.toneMapped = false;
+    const tvScreen = new THREE.Mesh(new THREE.PlaneGeometry(2.66, 2.0), this.screenMat);
+    tvScreen.position.set(0, 2.15, 0.085);
+    tvG.add(tvBox, tvStand, tvBase, tvScreen);
+    tvG.position.set(TV_X, 0, -0.3);
+    tvG.rotation.y = -Math.PI / 2 + 0.45;               // 초파리와 카메라 쪽을 향하게
+    scene.add(mkFadeGroup(tvG));
+    this.tvLight = new THREE.PointLight(0xc8d8ff, 0, 7, 2);   // 화면 빛이 얼굴을 비춘다
+    this.tvLight.position.set(TV_X - 0.9, 2.0, 0.2);
+    scene.add(this.tvLight);
   }
+
+  // 실험실 화면 연결: canvas가 null이면 TV를 끈다. label은 시청 중 행동 이름.
+  setScreen(canvas, label = '📺 TV 보는 중') {
+    this.tvOn = !!canvas;
+    this.tvLabel = label;
+    if (!canvas) return;
+    if (!this.screenTex || this.screenTex.image !== canvas) {
+      this.screenTex = new THREE.CanvasTexture(canvas);
+      this.screenTex.encoding = THREE.sRGBEncoding;
+      this.screenMat.map = this.screenTex;
+      this.screenMat.color.set(0xffffff);
+      this.screenMat.needsUpdate = true;
+    }
+  }
+
+  screenUpdated() { if (this.screenTex) this.screenTex.needsUpdate = true; }
 
   setRates(r) { Object.assign(this.rates, r); }
   setEthanol(v) { this.eth = v; }
@@ -387,7 +430,7 @@ export class Fly3D {
 
     // 와인 홀짝: 쏟아진 와인이 있고 적당히 취했을 때 웅덩이로 걸어가 마신다
     // (0.62를 넘으면 욕조 반신욕으로 넘어간다)
-    const wantSip = this.spill > 0.7 && eth > 0.45 && eth <= 0.62 && upright > 0.7 &&
+    const wantSip = !this.tvOn && this.spill > 0.7 && eth > 0.45 && eth <= 0.62 && upright > 0.7 &&
                     !flying && this.jumpT < 0 && !feeding && Math.abs(speed) < 0.1;
     let sipping = false, sipWalk = 0;
     if (wantSip) {
@@ -399,7 +442,7 @@ export class Fly3D {
 
     // 욕조 반신욕: 만취 구간(0.62~0.85)이면 욕조로 걸어가 몸을 담근다
     const BATH_X = TUB_POS + 0.45;
-    const wantBath = eth > 0.62 && upright > 0.7 && !flying && this.jumpT < 0 && !feeding;
+    const wantBath = !this.tvOn && eth > 0.62 && upright > 0.7 && !flying && this.jumpT < 0 && !feeding;
     let bathWalk = 0, bathing = false;
     if (wantBath) {
       const dxb = BATH_X - this.x;
@@ -412,7 +455,7 @@ export class Fly3D {
     this.waterMesh.position.y = 0.78 + Math.sin(this.t * 2.4) * 0.012;
 
     // 난간 흡연: 니코틴이 있으면 난간으로 걸어가 두 발로 서서 태운다 (욕조 중엔 안 함)
-    const wantStand = this.nic > 0.2 && upright > 0.7 && !flying && this.jumpT < 0 &&
+    const wantStand = !this.tvOn && this.nic > 0.2 && upright > 0.7 && !flying && this.jumpT < 0 &&
                       !sipping && sipWalk === 0 && !feeding && Math.abs(speed) < 0.12 &&
                       !wantBath && this.bathT < 0.2;
     let standWalk = 0, standing = false;
@@ -430,11 +473,24 @@ export class Fly3D {
     this.spotL.intensity = 1.3 - 0.65 * mood;
     this.rimL.intensity = 0.55 + 0.35 * mood;
 
+    // TV 시청: 화면 앞 자리로 걸어가 올려다본다
+    const wantWatch = this.tvOn && upright > 0.7 && !flying && this.jumpT < 0;
+    let watchWalk = 0, watching = false;
+    if (wantWatch) {
+      const dxw = WATCH_X - this.x;
+      if (Math.abs(dxw) > 0.15 && this.watchT < 0.3) { watchWalk = Math.sign(dxw); this.dir = Math.sign(dxw) || 1; }
+      else { watching = true; this.dir = 1; }
+    }
+    this.watchT = ease(this.watchT, watching ? 1 : 0, 2.5);
+    this.tvO = ease(this.tvO, this.tvOn ? 1 : 0, 3);
+    this._fade(this.tvG, this.tvO);
+    this.tvLight.intensity = this.tvO * 0.9;
+
     // 그루밍: 한가할 때 가끔 앞다리를 비빈다
-    const propWalk = sipWalk || standWalk || bathWalk;
+    const propWalk = sipWalk || standWalk || bathWalk || watchWalk;
     const idle = Math.abs(speed) <= 0.06 && propWalk === 0 && !airborne &&
                  upright > 0.9 && !feeding && !sipping && this.hicT <= 0 &&
-                 this.standT < 0.2 && this.bathT < 0.2;
+                 this.standT < 0.2 && this.bathT < 0.2 && this.watchT < 0.2;
     if (idle && this.groomT <= 0 && Math.random() < dt * 0.12) this.groomT = 2.6;
     if (!idle) this.groomT = 0;
     if (this.groomT > 0) this.groomT -= dt;
@@ -461,7 +517,7 @@ export class Fly3D {
     let vx = 0;
     if (this.jumpT < 0 && upright > 0.6 && !flying) {
       vx = (propWalk !== 0 ? propWalk * 1.3 : speed * 2.3 * this.dir) * upright *
-           (1 - this.standT) * (1 - this.bathT);
+           (1 - this.standT) * (1 - this.bathT) * (1 - this.watchT);
       if (eth > 0.1) {
         this._staggerVx += (Math.random() - 0.5) * eth * 6.5 * dt;
         this._staggerVx *= 1 - Math.min(1, dt * 2.5);
@@ -472,6 +528,7 @@ export class Fly3D {
     this.x += vx * dt;
     if (this.standT > 0.3) this.x += (STAND_X - this.x) * Math.min(1, dt * 4) * this.standT;
     if (this.bathT > 0.3) this.x += (BATH_X - this.x) * Math.min(1, dt * 4) * this.bathT;
+    if (this.watchT > 0.3) this.x += (WATCH_X - this.x) * Math.min(1, dt * 4) * this.watchT;
     if (this.passT > 0.05) {
       // 베개(왼쪽 끝)에 머리를 두고 엎어진다
       this.x += (BED_POS - 0.1 - this.x) * Math.min(1, dt * 2.5) * this.passT;
@@ -482,7 +539,7 @@ export class Fly3D {
 
     // ── 보행 위상: 디딤발이 몸 속도와 같은 속도로 뒤로 밀리도록 ──
     const walking = (Math.abs(speed) > 0.06 || propWalk !== 0) && !airborne &&
-                    upright > 0.6 && this.standT < 0.6 && this.bathT < 0.6;
+                    upright > 0.6 && this.standT < 0.6 && this.bathT < 0.6 && this.watchT < 0.6;
     this.walkW = ease(this.walkW, walking ? 1 : 0, 6);
     if (walking) this.gaitP += dt * Math.max(-3, Math.min(3, (vx * this.dir) / (2 * STRIDE)));
     this.tuckW = ease(this.tuckW, airborne ? 1 : 0, 8);
@@ -514,6 +571,7 @@ export class Fly3D {
     y -= this.sip * 0.12;
     pitch += this.standT * 0.95;                    // 난간: 두 발로 선다
     y += this.standT * (1.62 - Y0);
+    pitch += this.watchT * 0.14;                    // TV: 화면을 올려다본다
     pitch += this.bathT * 0.42;                     // 욕조: 뒤로 기대 눕는다
     y += this.bathT * (0.8 - Y0);
     pitch -= this.passT * 0.04;                     // 침대: 배를 깔고 엎어짐
@@ -613,6 +671,7 @@ export class Fly3D {
       this.jumpT >= 0 ? '점프! ⚡' :
       flying ? '비행 🪽' :
       this.bathT > 0.5 ? '욕조 반신욕 🛁🍷' :
+      this.watchT > 0.5 && this.prob <= 0.3 ? this.tvLabel :
       sipping || this.sip > 0.4 ? '와인 홀짝 🍷' :
       this.hicT > 0 ? '딸꾹! 🫧' :
       speed < -0.06 ? '문워크 🕺' :

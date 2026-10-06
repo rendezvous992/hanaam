@@ -2,6 +2,10 @@
 import { BrainRenderer } from './render.js';
 import { Fly } from './fly.js';
 import { Fly3D } from './fly3d.js';
+import { fetchBin, loadVision } from './data.js';
+import { FlyEye } from './vision.js';
+import { Lab } from './lab.js';
+import { OmokArena } from './arena.js';
 
 // 행동 판독 그룹 순서 (워커의 비트마스크 순서와 일치해야 함)
 const READOUT_KEYS = ['fwd', 'back', 'jump', 'prob', 'dn', 'motor'];
@@ -22,19 +26,6 @@ const PALETTE = {
 
 const $ = id => document.getElementById(id);
 
-async function fetchBin(url) {
-  // 정적 서버에서는 .bin을 그대로, .bin을 서빙하지 못하는 호스팅(claude.ai
-  // 아티팩트 등)에서는 base64 텍스트(.b64.txt) 폴백을 읽는다.
-  const r = await fetch(url);
-  if (r.ok) return r.arrayBuffer();
-  const r2 = await fetch(url + '.b64.txt');
-  if (!r2.ok) throw new Error(`${url}: ${r.status}/${r2.status}`);
-  const s = (await r2.text()).replace(/\s+/g, '');
-  const bin = atob(s);
-  const u8 = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-  return u8.buffer;
-}
 
 async function main() {
   const status = $('loading');
@@ -89,6 +80,22 @@ async function main() {
     const rates = { fwd: 0, back: 0, jump: 0, prob: 0, dn: 0, motor: 0 };
     window.__fly = fly;   // 테스트용
 
+    // ── 실험실(TV·탁구)과 오목 경기장: 초파리 눈 데이터가 있어야 켜진다 ──
+    let lab = null, arena = null, arenaOpen = false;
+    loadVision().then(vis => {
+      lab = new Lab({ worker, eye: new FlyEye(vis), fly, meta, vis });
+      arena = new OmokArena({
+        n, positions: new Uint16Array(posBuf), vis,
+        // 경기장이 열려 있는 동안 메인 뇌·3D를 멈춰 두 뇌에 CPU를 몰아준다
+        onOpen: () => { arenaOpen = true; worker.postMessage({ type: 'params', running: false }); },
+        onClose: () => { arenaOpen = false; worker.postMessage({ type: 'params', running }); },
+      });
+      window.__lab = lab; window.__arena = arena;
+    }).catch(err => {
+      console.warn('초파리 눈 데이터 로드 실패 — 실험실 비활성:', err);
+      for (const id of ['lab-tv', 'lab-pong', 'lab-omok']) $(id).disabled = true;
+    });
+
     // ── 통계 + 스파크라인 ───────────────────────────────
     const spark = $('spark').getContext('2d');
     const history = new Array(120).fill(0);
@@ -99,6 +106,7 @@ async function main() {
       const glow = new Uint8Array(m.glow);
       renderer.updateGlow(glow);
       worker.postMessage({ type: 'buffer', buf: m.glow }, [m.glow]);
+      lab?.onFrame(m);
 
       // 판독 그룹 발화율 (Hz/뉴런, 지수평활). brain = 전뇌 평균 —
       // 전뇌 점화 파도에 휩쓸린 발화와 진짜 명령 신호를 구분하는 기준선.
@@ -209,6 +217,46 @@ async function main() {
       renderer.autoRotate = !renderer.autoRotate;
       $('rotate').classList.toggle('on', renderer.autoRotate);
     };
+    // ── 실험실 버튼 ──────────────────────────────────
+    const LAB_NOTE = {
+      tv: '화면을 R1-6 광수용체 8,456개의 발화로 바꿔 넣습니다. 오른쪽은 수용장을 측정한 시각 뉴런 2,670개의 반응을 그 뉴런이 보는 위치에 그린 것입니다.',
+      pong: '패들은 초파리 뇌가 움직입니다: 시각 뉴런이 공을 가장 강하게 본 위치로 갑니다(정위 반응, 학습된 디코더 없음). 치면 설탕 + 보상 도파민, 놓치면 쓴맛 + 처벌 도파민.',
+    };
+    const setLab = mode => {
+      if (!lab) return;
+      const next = lab.mode === mode ? 'off' : mode;
+      lab.setMode(next);
+      $('lab-tv').classList.toggle('on', next === 'tv');
+      $('lab-pong').classList.toggle('on', next === 'pong');
+      $('lab-card').hidden = next === 'off';
+      $('lab-channels').hidden = next !== 'tv';
+      $('lab-title').textContent = next === 'pong' ? '🏓 초파리 탁구' : '📺 초파리 TV';
+      $('lab-note').textContent = LAB_NOTE[next] || '';
+      if (next === 'pong') lab.resetPong();
+    };
+    $('lab-tv').onclick = () => setLab('tv');
+    $('lab-pong').onclick = () => setLab('pong');
+    $('lab-omok').onclick = () => arena?.open();
+    for (const b of document.querySelectorAll('#lab-channels button')) {
+      b.onclick = () => {
+        if (lab) lab.channel = b.dataset.ch;
+        for (const o of document.querySelectorAll('#lab-channels button')) o.classList.toggle('on', o === b);
+      };
+    }
+    const labScreen = $('lab-screen').getContext('2d'), labSeen = $('lab-seen').getContext('2d');
+    let labDrawn = 0;
+    const drawLabCard = now => {
+      if (!lab || lab.mode === 'off' || now - labDrawn < 80) return;
+      labDrawn = now;
+      labScreen.drawImage(lab.screen, 0, 0);
+      lab.eye.drawPerceived(labSeen);
+      if (lab.mode === 'pong') {
+        const st = lab.stats();
+        $('lab-stats').textContent = `맞힘 ${st.hits} · 놓침 ${st.misses}` +
+          (st.n ? ` · 최근 ${st.n}회 ${Math.round(st.rate * 100)}%` : '');
+      } else $('lab-stats').textContent = '';
+    };
+
     $('skel').onclick = () => {
       renderer.showSkel = !renderer.showSkel;
       $('skel').classList.toggle('on', renderer.showSkel);
@@ -219,8 +267,12 @@ async function main() {
     let last = performance.now();
     const frame = (now) => {
       const dt = Math.min(0.1, (now - last) / 1000);
-      renderer.draw(dt);
-      caption.textContent = fly.update(dt);
+      if (!arenaOpen) {
+        renderer.draw(dt);
+        lab?.tick(dt, now);
+        caption.textContent = fly.update(dt);
+        drawLabCard(now);
+      }
       last = now;
       requestAnimationFrame(frame);
     };

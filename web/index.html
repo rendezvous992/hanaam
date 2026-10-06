@@ -22,7 +22,70 @@
   <div id="fly-svg"></div>
 </div>
 
+<div id="lab-card" hidden>
+  <div class="lab-head"><b id="lab-title">📺 초파리 TV</b><span id="lab-stats"></span></div>
+  <div class="lab-views">
+    <figure><canvas id="lab-screen" width="160" height="120"></canvas><figcaption>화면 → 광수용체</figcaption></figure>
+    <figure><canvas id="lab-seen" width="160" height="120"></canvas><figcaption>뇌가 본 화면 (시각 뉴런)</figcaption></figure>
+  </div>
+  <div id="lab-channels" class="row">
+    <button data-ch="stripes" class="on">〰️ 흐르는 줄무늬</button>
+    <button data-ch="loom">🔵 다가오는 원</button>
+    <button data-ch="flicker">⚡ 깜빡임</button>
+    <button data-ch="stars">✨ 반딧불</button>
+  </div>
+  <p class="hint" id="lab-note"></p>
+</div>
+
+<div id="arena" hidden>
+  <div class="arena-box">
+    <div class="arena-head">
+      <h2>⚫ 초파리 두 마리 오목 대결</h2>
+      <button id="omok-close" aria-label="닫기">✕</button>
+    </div>
+    <p class="hint">두 마리 모두 실제 연결체 뇌(뉴런 139,255개)입니다. 판을 40ms 보여주면 <b>그 뇌의 시각 뉴런이 가장 강하게 반응한 빈 칸</b>에 둡니다. 규칙·점수표·선생님은 없고, 5목 판정은 심판만 합니다. 판이 끝나면 이긴 뇌에는 보상 도파민, 진 뇌에는 처벌 도파민이 들어가 그 판에 함께 발화한 시냅스가 강화·약화됩니다.</p>
+    <div class="arena-grid">
+      <section class="fly-card">
+        <h3>초파리 A · 흑</h3>
+        <canvas id="omok-brain-A" width="220" height="130"></canvas>
+        <div class="seen-row"><canvas id="omok-seen-A" width="108" height="108"></canvas><span>A가 본 판<br>밝을수록 뇌 반응이 강함<br>파란 테두리 = 고른 칸</span></div>
+        <p id="omok-info-A" class="info"></p>
+        <p id="omok-pref-A" class="hint"></p>
+        <label>🍺 <span id="omok-eth-A-val">맨정신</span><input id="omok-eth-A" type="range" min="0" max="100" value="0"></label>
+      </section>
+      <section class="board-col">
+        <canvas id="omok-board" width="360" height="360"></canvas>
+        <p id="omok-status" class="info"></p>
+        <div class="row">
+          <button id="omok-match">▶ 대결</button>
+          <button id="omok-train">🏋️ 연습 경기 ×5</button>
+          <button id="omok-human">🧑 나 vs 초파리 A</button>
+          <button id="omok-stop">⏹ 멈춤</button>
+        </div>
+      </section>
+      <section class="fly-card">
+        <h3>초파리 B · 백</h3>
+        <canvas id="omok-brain-B" width="220" height="130"></canvas>
+        <div class="seen-row"><canvas id="omok-seen-B" width="108" height="108"></canvas><span>B가 본 판<br>밝을수록 뇌 반응이 강함<br>파란 테두리 = 고른 칸</span></div>
+        <p id="omok-info-B" class="info"></p>
+        <p id="omok-pref-B" class="hint"></p>
+        <label>🍺 <span id="omok-eth-B-val">맨정신</span><input id="omok-eth-B" type="range" min="0" max="100" value="0"></label>
+      </section>
+    </div>
+  </div>
+</div>
+
 <aside id="panel">
+  <section>
+    <h2>🎮 실험실</h2>
+    <p class="hint">초파리 눈(광수용체 8,456개)에 화면을 보여주고, 수용장을 측정한 시각 뉴런으로 뇌가 본 것을 읽습니다.</p>
+    <div class="row">
+      <button id="lab-tv">📺 TV 보여주기</button>
+      <button id="lab-pong">🏓 탁구</button>
+      <button id="lab-omok" style="grid-column: span 2">⚫ 초파리 두 마리 오목 대결</button>
+    </div>
+  </section>
+
   <section>
     <h2>행동 제어</h2>
     <p class="hint">명령 뉴런을 <b>꾹 누르고 있는 동안</b> 광유전학처럼 강제 자극합니다.
