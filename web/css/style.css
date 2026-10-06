@@ -132,8 +132,8 @@ input[type=range] {
   accent-color: var(--accent);
 }
 
-.row { display: flex; gap: 6px; }
-.row button { flex: 1; text-align: center; font-size: 12px; }
+.row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.row button { text-align: center; font-size: 12px; white-space: nowrap; }
 
 .stats {
   display: grid;
