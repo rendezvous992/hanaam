@@ -8,6 +8,7 @@
 
 let n = 0;
 let indptr, targets, weights;   // CSR
+let orig = null;                // 학습 전 원래 가중치(연결체 그대로) — 저장할 때 차이만 뽑는다
 let v, refr, glow, ad;          // 상태 (ad: 적응형 임계값 증분)
 let readoutMask = null;         // 뉴런별 비트마스크: 어떤 판독 그룹 소속인지
 let readoutCounts = null;       // 그룹별 프레임 내 스파이크 수
@@ -57,7 +58,8 @@ onmessage = (e) => {
     indptr = new Uint32Array(m.indptr);
     targets = new Uint32Array(m.targets);
     // 가소성(보상 학습)으로 소수 단위 변화를 담기 위해 실수로 보관
-    weights = Float32Array.from(new Int16Array(m.weights));
+    orig = new Int16Array(m.weights);
+    weights = Float32Array.from(orig);
     v = new Float32Array(n);
     refr = new Uint8Array(n);
     glow = new Float32Array(n);
@@ -103,6 +105,21 @@ onmessage = (e) => {
     // 도파민 신호 r로, 직전 프로브에서 post 뉴런들(고른 칸을 보는 시각 뉴런)을
     // 발화시키는 데 함께한 입력 시냅스만 강화(r>0)·약화(r<0)한다
     postMessage({ type: 'reinforced', id: m.id, ...reinforceCell(m.post, m.r, m.eta || 0.4) });
+  } else if (m.type === 'exportDiff') {
+    // 학습으로 바뀐 시냅스만 (인덱스, 현재 가중치)로 — 공유 저장소에 올릴 '훈련된 뇌'
+    let k = 0;
+    for (let j = 0; j < weights.length; j++) if (weights[j] !== orig[j]) k++;
+    const idx = new Uint32Array(k), val = new Float32Array(k);
+    k = 0;
+    for (let j = 0; j < weights.length; j++) if (weights[j] !== orig[j]) { idx[k] = j; val[k++] = weights[j]; }
+    postMessage({ type: 'diff', id: m.id, idx, val }, [idx.buffer, val.buffer]);
+  } else if (m.type === 'importDiff') {
+    // 원래 연결체로 되돌린 뒤 저장된 차이를 덮어쓴다 (idx가 비면 초기화)
+    weights.set(orig);
+    const idx = new Uint32Array(m.idx), val = new Float32Array(m.val);
+    let k = 0;
+    for (let q = 0; q < idx.length; q++) if (idx[q] < weights.length) { weights[idx[q]] = val[q]; k++; }
+    postMessage({ type: 'imported', id: m.id, changed: k });
   } else if (m.type === 'stim') {
     // rate 미지정 시 전역 stimRate 사용 (명령 뉴런은 강한 고정 자극)
     if (m.on) stimActive[m.key] = { idx: new Uint32Array(m.indices), rate: m.rate || 0 };

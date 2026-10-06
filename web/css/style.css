@@ -224,6 +224,9 @@ footer a { color: #9db4ff; text-decoration: none; }
 }
 .fly-card h3 { font-size: 14px; color: var(--accent); margin-bottom: 8px; }
 .fly-card > canvas { width: 100%; max-width: 100%; aspect-ratio: 22 / 13; border-radius: 8px; display: block; background: #060914; }
+.fly-card > canvas.prog { aspect-ratio: 220 / 56; margin-top: 6px; }
+.save-line { margin-top: 8px; font-size: 11.5px; }
+.reset-btn { margin-top: 6px; font-size: 12px; padding: 6px 10px; }
 .seen-row { display: flex; gap: 10px; align-items: center; margin: 10px 0 6px; }
 .seen-row canvas { width: 92px; height: 92px; border-radius: 6px; flex: none; }
 .seen-row span { font-size: 10.5px; color: var(--dim); line-height: 1.5; }

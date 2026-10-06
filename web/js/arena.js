@@ -8,8 +8,11 @@
 //   방치·동떨어진 수)이면 쓴맛 + 처벌 도파민(PPL1)을 준다. 그 수를 고르게 만든 시냅스 —
 //   고른 칸을 보는 시각 뉴런으로 들어가며 방금 함께 발화한 입력 — 만 강화·약화된다.
 //   조련사는 수를 대신 고르지 않는다. ▶ 공식 대결은 학습 없이 실력만 겨룬다.
+// 보관(brain-store.js): 훈련으로 바뀐 시냅스와 기록은 사이트 공유 저장소에 남아,
+//   링크로 들어온 누구나 그 뇌를 이어받아 대결시키거나 더 가르칠 수 있다.
 import { loadWiring } from './data.js';
 import { FlyEye, SCREEN_W, SCREEN_H } from './vision.js';
+import { BrainStore } from './brain-store.js';
 
 const N = 9;
 const REGION = [0.15, 0.15, 0.85, 0.85];
@@ -111,7 +114,7 @@ class FlyPlayer {
     w.postMessage({ type: 'params', speed: 2 });
     w.onmessage = e => {
       const m = e.data;
-      if (m.type === 'probeResult' || m.type === 'reinforced') {
+      if (m.id && this.pending.has(m.id)) {
         this.pending.get(m.id)(m); this.pending.delete(m.id);
       } else if (m.type === 'frame') {
         this.glow = new Uint8Array(m.glow);
@@ -128,6 +131,21 @@ class FlyPlayer {
       this.pending.set(id, res);
       this.worker.postMessage({ ...msg, id }, transfer);
     });
+  }
+
+  // 학습으로 바뀐 시냅스만 꺼내기 / 저장본 덮어쓰기(빈 차이 = 원래 연결체로)
+  exportDiff() { return this.call({ type: 'exportDiff' }); }
+  async importDiff(diff) {
+    const idx = diff ? diff.idx : new Uint32Array(0), val = diff ? diff.val : new Float32Array(0);
+    const res = await this.call({ type: 'importDiff', idx, val }, [idx.buffer, val.buffer]);
+    this.synChanged = res.changed;
+  }
+  meta() { return { record: this.record, trained: this.trained, synChanged: this.synChanged, praise: this.praise }; }
+  restore(m) {
+    this.record = { w: 0, l: 0, d: 0, ...m.record };
+    this.trained = m.trained || 0;
+    this.praise = Array.isArray(m.praise) ? m.praise.slice() : [];
+    this.synChanged = m.synChanged || 0;
   }
 
   setEthanol(v) { this.worker.postMessage({ type: 'params', ethanol: v }); }
@@ -196,11 +214,14 @@ export class OmokArena {
     this.boardCv = document.getElementById('omok-board');
     this.board = new Int8Array(N * N);
     this.busy = false; this.human = false; this.lastMove = -1;
+    this.store = new BrainStore();
+    this.savedAt = null;
     document.getElementById('omok-close').onclick = () => this.close();
     document.getElementById('omok-match').onclick = () => this.run(1, 450, false);
     document.getElementById('omok-train').onclick = () => this.run(10, 0, true);
     document.getElementById('omok-human').onclick = () => this.humanGame();
     document.getElementById('omok-stop').onclick = () => { this.stop = true; };
+    document.getElementById('omok-reset').onclick = () => this.resetBrains();
     this.boardCv.onclick = e => this.click(e);
   }
 
@@ -221,7 +242,14 @@ export class OmokArena {
         };
       }
       this.board.fill(0); this.drawBoard(); this.updateCards();
-      this.say('준비 완료. 두 뇌는 똑같은 연결체로 시작합니다. 🎓 조련 훈련으로 가르친 뒤 ▶ 대결로 붙여 보세요.');
+      this.busy = true;
+      this.say('공유 저장소에서 훈련된 뇌를 찾는 중…');
+      const found = await this.loadShared();
+      this.busy = false;
+      this.updateCards(); this.showSave();
+      this.say(found
+        ? `저장된 뇌를 이어받았습니다 (누적 훈련 A ${this.flies.A.trained}판 · B ${this.flies.B.trained}판). 🎓 더 가르치거나 ▶ 대결시켜 보세요.`
+        : '준비 완료. 두 뇌는 똑같은 연결체로 시작합니다. 🎓 조련 훈련으로 가르친 뒤 ▶ 대결로 붙여 보세요.');
     } else {
       for (const f of Object.values(this.flies)) f.setRunning(true);
     }
@@ -275,8 +303,79 @@ export class OmokArena {
       if (delay) await sleep(1200);
     }
     if (this.stop) this.say('멈췄습니다.');
-    else if (train) this.say(`훈련 ${games}판 끝. 카드의 칭찬 비율이 오르는지 보세요. ▶ 대결은 학습 없이 실력만 겨룹니다.`);
+    else if (train) this.say(`훈련 ${games}판 끝. 카드의 발전 그래프가 오르는지 보세요. ▶ 대결은 학습 없이 실력만 겨룹니다.`);
     this.busy = false;
+    this.save(train);
+  }
+
+  // ── 공유 저장소 ──
+  async loadShared() {
+    let found = false;
+    for (const k of ['A', 'B']) {
+      try {
+        const s = await this.store.load(k);
+        if (!s) continue;
+        found = true;
+        const f = this.flies[k];
+        f.restore(s.meta);
+        if (s.diff) await f.importDiff(s.diff);
+        this.savedAt = Math.max(this.savedAt || 0, s.meta.updatedAt || 0);
+      } catch (e) { this.store.lastError = e?.message || String(e); }
+    }
+    return found;
+  }
+
+  // brain=true면 바뀐 시냅스까지, 아니면 기록만
+  async save(brain) {
+    if (!this.flies) return;
+    const shared = this.store.state === 'shared';
+    if (shared) this.showSave('💾 공유 저장소에 저장하는 중…');
+    let ok = true;
+    for (const k of ['A', 'B']) {
+      const f = this.flies[k];
+      if (brain) {
+        const { idx, val } = await f.exportDiff();
+        f.synChanged = idx.length;     // 같은 시냅스가 여러 번 바뀐 것은 한 번으로
+        if (shared) ok = (await this.store.saveBrain(k, f.meta(), idx, val)) && ok;
+      } else if (shared) ok = (await this.store.saveMeta(k, f.meta())) && ok;
+    }
+    if (shared && ok) this.savedAt = Date.now();
+    this.updateCards(); this.showSave();
+  }
+
+  showSave(text) {
+    const el = document.getElementById('omok-save');
+    if (text) { el.textContent = text; return; }
+    const st = this.store.state;
+    const when = this.savedAt ? ` · 마지막 저장 ${new Date(this.savedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : '';
+    el.textContent = st === 'shared'
+      ? `💾 공유 저장소 연결됨 — 훈련·대결 기록이 자동 저장되고, 링크로 들어온 사람 모두가 이 뇌를 이어받습니다${when}`
+      : st === 'readonly'
+        ? `👀 저장된 뇌를 불러왔습니다 (보기 전용). 여기서 더 가르친 건 이 창에서만 유지됩니다${when}`
+        : '💭 공유 저장소를 쓸 수 없어(로그인하지 않았거나 지원하지 않는 화면) 훈련은 이 창에서만 유지됩니다';
+    if (this.store.lastError) el.textContent += ` · ⚠️ ${this.store.lastError}`;
+    document.getElementById('omok-reset').hidden = st !== 'shared';
+  }
+
+  // 두 번 눌러야 원래 연결체로 되돌린다
+  async resetBrains() {
+    if (this.busy || !this.flies) return;
+    const btn = document.getElementById('omok-reset');
+    if (!this.resetArmed) {
+      this.resetArmed = true; btn.textContent = '⚠️ 한 번 더 누르면 초기화';
+      setTimeout(() => { this.resetArmed = false; btn.textContent = '🧹 뇌 초기화'; }, 3000);
+      return;
+    }
+    this.resetArmed = false; btn.textContent = '🧹 뇌 초기화';
+    this.busy = true;
+    for (const f of Object.values(this.flies)) {
+      await f.importDiff(null);
+      f.restore({}); f.lastSeen = null; f.lastMove = -1;
+    }
+    this.busy = false;
+    this.updateCards();
+    this.say('두 뇌를 원래 연결체로 되돌렸습니다.');
+    await this.save(true);
   }
 
   // 🧑 나(흑) vs 초파리 A(백)
@@ -308,6 +407,7 @@ export class OmokArena {
       if (w === 2) A.record.w++; else if (w === 1) A.record.l++; else A.record.d++;
       this.say(w === 3 ? '무승부!' : w === 1 ? '내가 이겼다!' : '초파리 A 승리! 🎉');
       this.updateCards();
+      this.save(false);
     }
   }
 
@@ -316,16 +416,40 @@ export class OmokArena {
       const f = this.flies?.[k]; if (!f) continue;
       const r = f.record;
       document.getElementById(`omok-info-${k}`).textContent =
-        `${r.w}승 ${r.l}패 ${r.d}무 · 훈련 ${f.trained}판`;
+        `${r.w}승 ${r.l}패 ${r.d}무 · 누적 훈련 ${f.trained}판`;
       const avg = a => Math.round(a.reduce((x, y) => x + y, 0) / a.length * 100);
-      const p = f.praise;
+      const p = f.praise, m = Math.min(10, Math.floor(p.length / 2));
       document.getElementById(`omok-pref-${k}`).textContent = !p.length
         ? '아직 훈련 전 (원래 연결체 그대로)'
         : p.length < 4
           ? `칭찬받은 수 ${avg(p)}% · 바뀐 시냅스 ${f.synChanged.toLocaleString()}개`
-          : `칭찬받은 수: 처음 ${avg(p.slice(0, 3))}% → 최근 ${avg(p.slice(-3))}% · 바뀐 시냅스 ${f.synChanged.toLocaleString()}개`;
+          : `칭찬받은 수: 처음 ${m}판 ${avg(p.slice(0, m))}% → 최근 ${m}판 ${avg(p.slice(-m))}% · 바뀐 시냅스 ${f.synChanged.toLocaleString()}개`;
+      this.drawProgress(k);
       this.drawSeen(k);
     }
+  }
+
+  // 발전 그래프: 훈련 판마다 칭찬받은 수의 비율(점) + 최근 10판 이동 평균(선)
+  drawProgress(k) {
+    const cv = document.getElementById(`omok-prog-${k}`), g = cv.getContext('2d');
+    const W = cv.width, H = cv.height, p = this.flies[k].praise;
+    g.fillStyle = '#0b0f1e'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 1;
+    for (const y of [0.25, 0.5, 0.75]) { g.beginPath(); g.moveTo(0, H * y); g.lineTo(W, H * y); g.stroke(); }
+    g.fillStyle = 'rgba(255,255,255,0.45)'; g.font = '9px sans-serif';
+    g.fillText('100%', 2, 9); g.fillText('0%', 2, H - 2);
+    if (!p.length) { g.fillText('훈련하면 여기에 발전 곡선이 그려집니다', 30, H / 2 + 3); return; }
+    const x = i => p.length === 1 ? W / 2 : 24 + (W - 28) * i / (p.length - 1), y = v => H - 3 - (H - 6) * v;
+    g.fillStyle = 'rgba(127,215,255,0.35)';
+    p.forEach((v, i) => g.fillRect(x(i) - 1, y(v) - 1, 2, 2));
+    g.strokeStyle = '#ffcf5a'; g.lineWidth = 2; g.beginPath();
+    let s = 0;
+    p.forEach((v, i) => {
+      s += v; if (i >= 10) s -= p[i - 10];
+      const a = s / Math.min(i + 1, 10);
+      i ? g.lineTo(x(i), y(a)) : g.moveTo(x(i), y(a));
+    });
+    g.stroke();
   }
 
   // 초파리가 본 판: 칸별 시각 뉴런 반응(밝을수록 강함), 고른 칸은 고리로

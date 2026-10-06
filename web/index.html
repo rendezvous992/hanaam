@@ -51,6 +51,7 @@
         <div class="seen-row"><canvas id="omok-seen-A" width="108" height="108"></canvas><span>A가 본 판<br>밝을수록 뇌 반응이 강함<br>파란 테두리 = 고른 칸</span></div>
         <p id="omok-info-A" class="info"></p>
         <p id="omok-pref-A" class="hint"></p>
+        <canvas id="omok-prog-A" class="prog" width="220" height="56" title="훈련 판마다 칭찬받은 수의 비율 · 노란 선 = 최근 10판 평균"></canvas>
         <label>🍺 <span id="omok-eth-A-val">맨정신</span><input id="omok-eth-A" type="range" min="0" max="100" value="0"></label>
       </section>
       <section class="board-col">
@@ -62,6 +63,8 @@
           <button id="omok-human">🧑 나 vs 초파리 A</button>
           <button id="omok-stop">⏹ 멈춤</button>
         </div>
+        <p id="omok-save" class="hint save-line"></p>
+        <button id="omok-reset" class="reset-btn" hidden>🧹 뇌 초기화</button>
       </section>
       <section class="fly-card">
         <h3>초파리 B · 백</h3>
@@ -69,6 +72,7 @@
         <div class="seen-row"><canvas id="omok-seen-B" width="108" height="108"></canvas><span>B가 본 판<br>밝을수록 뇌 반응이 강함<br>파란 테두리 = 고른 칸</span></div>
         <p id="omok-info-B" class="info"></p>
         <p id="omok-pref-B" class="hint"></p>
+        <canvas id="omok-prog-B" class="prog" width="220" height="56" title="훈련 판마다 칭찬받은 수의 비율 · 노란 선 = 최근 10판 평균"></canvas>
         <label>🍺 <span id="omok-eth-B-val">맨정신</span><input id="omok-eth-B" type="range" min="0" max="100" value="0"></label>
       </section>
     </div>
