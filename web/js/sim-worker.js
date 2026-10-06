@@ -9,6 +9,7 @@
 let n = 0;
 let indptr, targets, weights;   // CSR
 let orig = null;                // 학습 전 원래 가중치(연결체 그대로) — 저장할 때 차이만 뽑는다
+let chg = null, nChg = 0;       // 시냅스별 '한 번이라도 바뀌었나' 표시와 그 개수(누적, 중복 없이)
 let v, refr, glow, ad;          // 상태 (ad: 적응형 임계값 증분)
 let readoutMask = null;         // 뉴런별 비트마스크: 어떤 판독 그룹 소속인지
 let readoutCounts = null;       // 그룹별 프레임 내 스파이크 수
@@ -60,6 +61,7 @@ onmessage = (e) => {
     // 가소성(보상 학습)으로 소수 단위 변화를 담기 위해 실수로 보관
     orig = new Int16Array(m.weights);
     weights = Float32Array.from(orig);
+    chg = new Uint8Array(weights.length); nChg = 0;
     v = new Float32Array(n);
     refr = new Uint8Array(n);
     glow = new Float32Array(n);
@@ -115,10 +117,11 @@ onmessage = (e) => {
     postMessage({ type: 'diff', id: m.id, idx, val }, [idx.buffer, val.buffer]);
   } else if (m.type === 'importDiff') {
     // 원래 연결체로 되돌린 뒤 저장된 차이를 덮어쓴다 (idx가 비면 초기화)
-    weights.set(orig);
+    weights.set(orig); chg.fill(0);
     const idx = new Uint32Array(m.idx), val = new Float32Array(m.val);
     let k = 0;
-    for (let q = 0; q < idx.length; q++) if (idx[q] < weights.length) { weights[idx[q]] = val[q]; k++; }
+    for (let q = 0; q < idx.length; q++) if (idx[q] < weights.length) { weights[idx[q]] = val[q]; chg[idx[q]] = 1; k++; }
+    nChg = k;
     postMessage({ type: 'imported', id: m.id, changed: k });
   } else if (m.type === 'stim') {
     // rate 미지정 시 전역 stimRate 사용 (명령 뉴런은 강한 고정 자극)
@@ -143,7 +146,7 @@ let spareBuf = null;
 // Δw = η · r · √(pre발화·post발화 / 최대) · w. 부호(흥분/억제)는 유지된다.
 let postMask = null;
 function reinforceCell(post, r, eta) {
-  if (!probeCounts || !r) return { changed: 0, meanChange: 0 };
+  if (!probeCounts || !r) return { changed: 0, total: nChg, meanChange: 0 };
   if (!postMask) postMask = new Uint8Array(n);
   for (const t of post) if (probeCounts[t]) postMask[t] = 1;
   let mx = 0;
@@ -167,11 +170,12 @@ function reinforceCell(post, r, eta) {
         sum += Math.abs(weights[j] * (f - 1));
         weights[j] *= f;
         changed++;
+        if (!chg[j]) { chg[j] = 1; nChg++; }
       }
     }
   }
   for (const t of post) postMask[t] = 0;
-  return { changed, meanChange: changed ? sum / changed : 0 };
+  return { changed, total: nChg, meanChange: changed ? sum / changed : 0 };
 }
 
 function step() {

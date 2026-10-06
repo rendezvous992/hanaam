@@ -95,7 +95,7 @@ async function main() {
       window.__lab = lab; window.__arena = arena;
     }).catch(err => {
       console.warn('초파리 눈 데이터 로드 실패 — 실험실 비활성:', err);
-      for (const id of ['lab-tv', 'lab-pong', 'lab-omok']) $(id).disabled = true;
+      for (const id of ['lab-tv', 'lab-pong', 'lab-omok', 'lab-pongduel']) $(id).disabled = true;
     });
 
     // ── 통계 + 스파크라인 ───────────────────────────────
@@ -238,7 +238,8 @@ async function main() {
     };
     $('lab-tv').onclick = () => setLab('tv');
     $('lab-pong').onclick = () => setLab('pong');
-    $('lab-omok').onclick = () => arena?.open();
+    $('lab-omok').onclick = () => arena?.open('omok');
+    $('lab-pongduel').onclick = () => arena?.open('pong');
     for (const b of document.querySelectorAll('#lab-channels button')) {
       b.onclick = () => {
         if (lab) lab.channel = b.dataset.ch;

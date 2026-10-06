@@ -224,6 +224,15 @@ footer a { color: #9db4ff; text-decoration: none; }
 }
 .fly-card h3 { font-size: 14px; color: var(--accent); margin-bottom: 8px; }
 .fly-card > canvas { width: 100%; max-width: 100%; aspect-ratio: 22 / 13; border-radius: 8px; display: block; background: #060914; }
+.arena-tabs { display: flex; gap: 6px; margin-left: auto; margin-right: 10px; }
+.arena-tabs button { padding: 6px 12px; font-size: 13px; }
+.slot-pick { width: 100%; margin: -2px 0 8px; padding: 5px 6px; font-size: 12.5px; background: #0b1020; color: var(--text); border: 1px solid rgba(255,255,255,.15); border-radius: 6px; }
+.row.row3 { grid-template-columns: repeat(3, 1fr); }
+.row.row3 button { font-size: 11.5px; padding-left: 4px; padding-right: 4px; }
+.new-fly { display: flex; gap: 6px; margin-top: 8px; }
+.new-fly input { flex: 1; min-width: 0; padding: 6px 8px; font-size: 12.5px; background: #0b1020; color: var(--text); border: 1px solid rgba(255,255,255,.15); border-radius: 6px; }
+.new-fly button { font-size: 12px; white-space: nowrap; }
+#omok-board { touch-action: none; }
 .fly-card > canvas.prog { aspect-ratio: 220 / 56; margin-top: 6px; }
 .save-line { margin-top: 8px; font-size: 11.5px; }
 .reset-btn { margin-top: 6px; font-size: 12px; padding: 6px 10px; }

@@ -4,8 +4,8 @@
 // 아티팩트 주인과 편집 권한자만 되고, 나머지는 불러와서 이 창에서만 더 가르칠 수 있다.
 // 뇌 전체(가중치 270만 개)가 아니라 학습으로 바뀐 시냅스만 (인덱스, 가중치)로 담는다:
 //   인덱스는 정렬된 차이를 varint로, 가중치는 float32로 → base64 → 문서당 ~200KB 조각.
-// 문서 구조: flies/<A|B> (기록·훈련 이력·현재 조각 버전),
-//            flies/<A|B>/brain/<버전>_<i> (뇌 조각)
+// 문서 구조: flies/<id> (이름·기록·훈련 이력·현재 조각 버전) — 초파리마다 하나,
+//            flies/<id>/brain/<버전>_<i> (뇌 조각)
 
 const CHUNK = 200000;          // base64 글자 수 (문서 한도 256KiB 아래)
 const MAX_PRAISE = 5000;       // 판별 칭찬 비율 이력 상한
@@ -68,6 +68,14 @@ export class BrainStore {
       this.canWrite = can !== false;         // null = 알 수 없음 → 써 보고 거절되면 읽기 전용
       this.state = this.canWrite ? 'shared' : 'readonly';
     } catch { this.db = null; }
+  }
+
+  // 저장된 초파리 목록 [{id, ...메타}] (뇌 조각은 하위 컬렉션이라 안 딸려 온다)
+  async list() {
+    await this.ready;
+    if (!this.db) return [];
+    const q = await this.db.collection('flies').limit(200).get();
+    return q.docs.filter(d => d.exists).map(d => ({ id: d.id, ...d.data() }));
   }
 
   // 한 마리의 저장본: { meta, diff:{idx,val}|null } 또는 null
@@ -140,7 +148,9 @@ export class BrainStore {
 
 function trimMeta(m) {
   return {
+    name: String(m.name || '').slice(0, 16), createdAt: m.createdAt || Date.now(),
     record: m.record, trained: m.trained, synChanged: m.synChanged,
     praise: m.praise.slice(-MAX_PRAISE).map(x => Math.round(x * 1000) / 1000),
+    pong: { w: m.pong.w, l: m.pong.l, trained: m.pong.trained, hits: m.pong.hits.slice(-MAX_PRAISE) },
   };
 }

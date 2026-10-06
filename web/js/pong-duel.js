@@ -1,0 +1,254 @@
+// 🏓 초파리 두 마리 탁구 대결: 오목 경기장의 두 뇌(A·B)가 마주 보고 공을 친다.
+//
+// 보기: 매 순간(게임 시간 0.1초마다) 각자의 눈에 자기 시점 화면 — 공과 자기 패들(아래쪽) — 을
+//   20ms 보여 준다. B는 반대편에 서 있으므로 화면을 180° 돌려서 본다. 상대 패들은 보이지 않는다.
+// 움직임(정위 반응): 시각 뉴런 반응이 가장 강한 공 대역의 열 = 뇌가 본 공 위치,
+//   아래 대역 = 뇌가 본 자기 패들 위치. 패들은 뇌가 본 공 쪽으로 간다. 학습된 디코더나
+//   정답 신호는 없다.
+// 조련: 공이 자기 쪽으로 올 때마다 조련사(심판)가 결과만 본다 — 공이 떨어질 곳으로 다가갔으면
+//   칭찬, 멀어졌으면 꾸지람, 받아내면 크게 칭찬(설탕 + PAM), 놓치면 크게 꾸지람(쓴맛 + PPL1).
+//   그 움직임을 만든 시냅스(뇌가 공을 본 열의 시각 뉴런으로 들어가며 방금 함께 발화한 입력)만
+//   강화·약화된다. 조련사는 패들을 대신 움직이지 않는다.
+import { SCREEN_W, SCREEN_H } from './vision.js';
+
+const COLS = 12;
+const BAND_V = 0.78;                    // 초파리 시점에서 이보다 아래는 자기 패들 대역
+const PAD_Y = 0.9, PAD_W = 0.24, BALL_R = 0.035;
+const PROBE_TICKS = 40;                 // 20ms — 수용장을 측정한 창과 같다
+export const GAME_DT = 0.1;             // 뇌가 한 번 보고 정하는 간격(게임 시간, 초)
+const PAD_SPEED = 0.9;                  // 화면 폭/초
+const SERVE_SPEED = 0.42, MAX_SPEED = 0.9;
+export const WIN_POINTS = 5, TRAIN_POINTS = 10;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+
+export class PongDuel {
+  constructor(arena) {
+    this.arena = arena;
+    const eye = arena.flies.A.eye;
+    this.featOf = new Int16Array(eye.perN);
+    this.featCnt = new Float32Array(2 * COLS);
+    this.colNeurons = Array.from({ length: COLS }, () => []);   // 공 대역 열별 시각 뉴런(전역 인덱스)
+    for (let k = 0; k < eye.perN; k++) {
+      const band = eye.sv[k] >= BAND_V ? 1 : 0;
+      const col = Math.min(COLS - 1, Math.floor(eye.su[k] * COLS));
+      this.featOf[k] = band * COLS + col;
+      this.featCnt[band * COLS + col]++;
+      if (!band) this.colNeurons[col].push(arena.vis.perIdx[k]);
+    }
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = SCREEN_W; this.canvas.height = SCREEN_H;
+    this.humanX = 0.5;
+    this.reset();
+  }
+
+  reset() {
+    this.score = { A: 0, B: 0 };
+    this.pad = { A: 0.5, B: 0.5 }; this.vel = { A: 0, B: 0 };
+    this.serve(Math.random() < 0.5 ? 'A' : 'B');
+    this.prev = this.snap(); this.stepAt = performance.now(); this.stepDur = GAME_DT * 1000;
+    this.note = ''; this.mode = null;
+  }
+
+  // 가운데에서 to 쪽으로
+  serve(to) {
+    const a = (Math.random() - 0.5) * 0.9;
+    const dir = to === 'A' ? 1 : -1;
+    this.ball = { x: 0.3 + Math.random() * 0.4, y: 0.5, vx: Math.sin(a) * SERVE_SPEED, vy: dir * Math.cos(a) * SERVE_SPEED, passed: false };
+  }
+
+  snap() { return { x: this.ball.x, y: this.ball.y, A: this.pad.A, B: this.pad.B }; }
+
+  // 초파리 k의 시점: A는 그대로, B는 180° 돌려서 (자기 패들이 아래)
+  view(k) {
+    const g = this.canvas.getContext('2d', { willReadFrequently: true }), W = SCREEN_W, H = SCREEN_H, b = this.ball;
+    const bx = k === 'A' ? b.x : 1 - b.x, by = k === 'A' ? b.y : 1 - b.y;
+    const px = k === 'A' ? this.pad.A : 1 - this.pad.B;
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#fff';
+    g.beginPath(); g.arc(bx * W, by * H, BALL_R * W, 0, Math.PI * 2); g.fill();
+    g.fillRect((px - PAD_W / 2) * W, PAD_Y * H - 3, PAD_W * W, 6);
+    return this.arena.flies[k].eye.rates(this.canvas);
+  }
+
+  // 20ms 보여 주고 → 뇌가 본 공·패들 위치 → 패들 속도(월드 좌표)
+  async look(k) {
+    const f = this.arena.flies[k];
+    const rates = this.view(k), keep = rates.slice();
+    const { counts } = await f.call({ type: 'probe', key: 'vis', rates, ticks: PROBE_TICKS, learn: true }, [rates.buffer]);
+    f.worker.postMessage({ type: 'drive', key: 'vis', rates: keep }, [keep.buffer]);
+    const fe = new Float32Array(2 * COLS);
+    for (let q = 0; q < counts.length; q++) fe[this.featOf[q]] += counts[q];
+    for (let j = 0; j < fe.length; j++) fe[j] = this.featCnt[j] ? fe[j] / this.featCnt[j] : 0;
+    const peak = band => {
+      let best = -1, bv = 0;
+      for (let c = 0; c < COLS; c++) if (fe[band * COLS + c] > bv) { bv = fe[band * COLS + c]; best = c; }
+      if (best < 0) return null;
+      let sw = 0, sx = 0;
+      for (let c = Math.max(0, best - 1); c <= Math.min(COLS - 1, best + 1); c++) {
+        sw += fe[band * COLS + c]; sx += fe[band * COLS + c] * (c + 0.5) / COLS;
+      }
+      return { x: sx / sw, col: best };
+    };
+    const ball = peak(0), pad = peak(1);
+    const own = k === 'A' ? this.pad.A : 1 - this.pad.B;
+    let v = 0;
+    if (ball) v = clamp((ball.x - (pad ? pad.x : own)) * 4, -1, 1) * PAD_SPEED;
+    f.pongSeen = { fe, ball: ball?.x ?? null, pad: pad?.x ?? null };
+    return { v: k === 'A' ? v : -v, col: ball ? ball.col : -1 };
+  }
+
+  approaching(k) { return k === 'A' ? this.ball.vy > 0 && !this.ball.passed : this.ball.vy < 0 && !this.ball.passed; }
+
+  // 패들이 없다고 치고 공이 k의 패들 선에 닿는 x (옆벽 반사 포함) — 조련사만 안다
+  landingX(k) {
+    const b = this.ball, yLine = k === 'A' ? PAD_Y - BALL_R : 1 - PAD_Y + BALL_R;
+    const t = (yLine - b.y) / b.vy;
+    if (!(t > 0)) return b.x;
+    const span = 1 - 2 * BALL_R;
+    let x = (b.x - BALL_R + b.vx * t) % (2 * span);
+    if (x < 0) x += 2 * span;
+    return BALL_R + (x > span ? 2 * span - x : x);
+  }
+
+  // 게임 시간 dt 동안 물리. 반환: [{k, hit}] — 공이 k에게 와서 받았는지/놓쳤는지
+  physics(dt) {
+    const ev = [], n = 4, h = dt / n, b = this.ball;
+    for (let s = 0; s < n; s++) {
+      for (const k of ['A', 'B']) this.pad[k] = clamp(this.pad[k] + this.vel[k] * h, PAD_W / 2, 1 - PAD_W / 2);
+      b.x += b.vx * h; b.y += b.vy * h;
+      if (b.x < BALL_R) { b.x = BALL_R; b.vx = Math.abs(b.vx); }
+      if (b.x > 1 - BALL_R) { b.x = 1 - BALL_R; b.vx = -Math.abs(b.vx); }
+      for (const k of ['A', 'B']) {
+        const down = k === 'A';
+        const line = down ? PAD_Y - BALL_R : 1 - PAD_Y + BALL_R;
+        if (b.passed || (down ? b.vy <= 0 || b.y < line : b.vy >= 0 || b.y > line)) continue;
+        const off = (b.x - this.pad[k]) / (PAD_W / 2 + BALL_R);
+        if (Math.abs(off) <= 1) {
+          const sp = Math.min(MAX_SPEED, Math.hypot(b.vx, b.vy) * 1.05), a = off * 0.9;
+          b.vx = Math.sin(a) * sp; b.vy = (down ? -1 : 1) * Math.abs(Math.cos(a) * sp);
+          b.y = line;
+          ev.push({ k, hit: true });
+        } else b.passed = true;
+      }
+      if (b.y > 1.04 || b.y < -0.04) {
+        const loser = b.y > 1 ? 'A' : 'B', winner = loser === 'A' ? 'B' : 'A';
+        ev.push({ k: loser, hit: false });
+        this.score[winner]++;
+        this.serve(loser);
+        break;
+      }
+    }
+    return ev;
+  }
+
+  // 한 걸음: (두) 뇌가 동시에 보고 → 패들 속도 → 물리 → (조련이면) 칭찬·꾸지람
+  async step(mode) {
+    const players = mode === 'human' ? ['A'] : ['A', 'B'];
+    const looks = await Promise.all(players.map(k => this.look(k)));
+    players.forEach((k, i) => { this.vel[k] = looks[i].v; });
+    if (mode === 'human') this.vel.B = clamp((this.humanX - this.pad.B) / GAME_DT, -PAD_SPEED * 1.2, PAD_SPEED * 1.2);
+    const before = { ...this.pad }, land = {}, appr = {};
+    for (const k of players) { appr[k] = this.approaching(k); if (appr[k]) land[k] = this.landingX(k); }
+    this.prev = this.snap();
+    const ev = this.physics(GAME_DT);
+    if (ev.some(e => !e.hit)) this.prev = this.snap();     // 새 서브 — 화면에서 공이 순간 이동하지 않게
+    // 공이 올 때마다 받았는지(1)/놓쳤는지(0) — 모든 경기에서 기록 (실력 측정)
+    for (const e of ev) {
+      const f = this.arena.flies[e.k];
+      if (mode === 'human' && e.k === 'B') continue;
+      f.pong.hits = (f.pong.hits + (e.hit ? '1' : '0')).slice(-5000);
+    }
+    if (mode !== 'train') return ev;
+    const notes = [];
+    await Promise.all(players.map(async (k, i) => {
+      const e = ev.find(x => x.k === k);
+      let r = 0, why = '';
+      if (e) [r, why] = e.hit ? [1, '받아냄'] : [-1, '놓침'];
+      else if (appr[k]) {
+        const d0 = Math.abs(before[k] - land[k]), d1 = Math.abs(this.pad[k] - land[k]);
+        if (d1 < PAD_W * 0.3) [r, why] = [0.1, '자리 잡음'];
+        else if (d1 < d0 - 1e-4) [r, why] = [0.2, '공 쪽으로'];
+        else if (d1 > d0 + 1e-4) [r, why] = [-0.2, '반대로'];
+        else [r, why] = [-0.05, '멈춤'];
+      }
+      if (!r || looks[i].col < 0) return;
+      const c = looks[i].col, post = [];
+      for (let j = Math.max(0, c - 1); j <= Math.min(COLS - 1, c + 1); j++) post.push(...this.colNeurons[j]);
+      await this.arena.flies[k].rewardNeurons(post, r, Math.abs(r) >= 1);
+      if (e || Math.random() < 0.15) notes.push(`${this.arena.flies[k].name}: ${why} ${r > 0 ? '🍬' : '☕'}`);
+    }));
+    if (notes.length) this.note = ' · ' + notes.join(' · ');
+    return ev;
+  }
+
+  // mode: 'match'(5점 먼저) · 'train'(points점, Infinity면 멈출 때까지) · 'human'(나 vs A)
+  async run(mode, { points = TRAIN_POINTS, fast = false, onPoint } = {}) {
+    const a = this.arena;
+    this.reset(); this.mode = mode; a.stop = false;
+    const t0 = performance.now();
+    let played = 0;
+    while (!a.stop) {
+      const s0 = performance.now();
+      const ev = await this.step(mode);
+      for (const e of ev) if (!e.hit) {
+        played++;
+        if (mode === 'train') for (const k of ['A', 'B']) a.flies[k].pong.trained++;
+        await onPoint?.(played);
+      }
+      const head = mode === 'train'
+        ? (points === Infinity ? `♾️ 무한 조련 ${played}점째 · 분당 ${Math.round(played / ((performance.now() - t0) / 60000) || 0)}점` : `🎓 조련 ${Math.min(played + 1, points)}/${points}점`)
+        : mode === 'human' ? `🧑 나(위) vs ${a.flies.A.name}(아래)` : '▶ 대결 (5점 먼저)';
+      a.say(`${head} · ${a.flies.A.name} ${this.score.A} : ${this.score.B} ${a.flies.B.name}${this.note}`);
+      if (ev.length) a.updateCards();
+      if (mode === 'train' ? played >= points : Math.max(this.score.A, this.score.B) >= WIN_POINTS) break;
+      // 대결·사람 대국은 실제 시간보다 빠르지 않게, 조련은 뇌가 허락하는 만큼 빠르게
+      const el = performance.now() - s0;
+      if (!fast) await sleep(Math.max(0, GAME_DT * 1000 - el));
+      this.stepDur = Math.max(16, performance.now() - this.stepAt); this.stepAt = performance.now();
+    }
+    this.stepAt = performance.now();
+    if (a.stop) return null;
+    const w = this.score.A > this.score.B ? 'A' : 'B';
+    if (mode === 'match') { a.flies[w].pong.w++; a.flies[w === 'A' ? 'B' : 'A'].pong.l++; }
+    if (mode === 'human') { if (w === 'A') a.flies.A.pong.w++; else a.flies.A.pong.l++; }
+    return w;
+  }
+
+  // 화면: 두 걸음 사이를 이어 그린다
+  draw(cv) {
+    const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+    const t = clamp((performance.now() - this.stepAt) / this.stepDur, 0, 1), p = this.prev, c = this.snap();
+    const L = (a, b) => a + (b - a) * t;
+    g.fillStyle = '#123a3a'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(255,255,255,0.5)'; g.lineWidth = 2; g.strokeRect(4, 4, W - 8, H - 8);
+    g.setLineDash([8, 8]); g.beginPath(); g.moveTo(4, H / 2); g.lineTo(W - 4, H / 2); g.stroke(); g.setLineDash([]);
+    g.font = 'bold 40px sans-serif'; g.fillStyle = 'rgba(255,255,255,0.18)'; g.textAlign = 'right';
+    g.fillText(this.score.B, W - 14, H / 2 - 14); g.fillText(this.score.A, W - 14, H / 2 + 44);
+    g.textAlign = 'left'; g.font = '12px sans-serif'; g.fillStyle = 'rgba(255,255,255,0.6)';
+    const f = this.arena.flies;
+    g.fillText(this.mode === 'human' ? '나' : f.B.name, 10, 20); g.fillText(f.A.name, 10, H - 10);
+    const pad = (x, y, col) => { g.fillStyle = col; g.fillRect((x - PAD_W / 2) * W, y * H - 4, PAD_W * W, 8); };
+    pad(L(p.B, c.B), 1 - PAD_Y, this.mode === 'human' ? '#9cff8a' : '#7fd7ff');
+    pad(L(p.A, c.A), PAD_Y, '#ffb347');
+    g.fillStyle = '#fff';
+    g.beginPath(); g.arc(L(p.x, c.x) * W, L(p.y, c.y) * H, BALL_R * W, 0, Math.PI * 2); g.fill();
+  }
+
+  // 초파리가 본 화면(자기 시점): 위 = 공 대역, 아래 = 패들 대역, 밝을수록 반응이 강함
+  drawSeen(k, cv) {
+    const g = cv.getContext('2d'), W = cv.width, H = cv.height, s = this.arena.flies[k].pongSeen;
+    g.fillStyle = '#0b0f1e'; g.fillRect(0, 0, W, H);
+    if (!s) return;
+    let mx = 1e-6; for (const x of s.fe) mx = Math.max(mx, x);
+    const cw = W / COLS, split = H * BAND_V;
+    for (let b = 0; b < 2; b++) for (let c = 0; c < COLS; c++) {
+      const a = Math.sqrt(s.fe[b * COLS + c] / mx);
+      g.fillStyle = `rgba(255,${120 + 100 * a | 0},${40 + 40 * a | 0},${a})`;
+      g.fillRect(c * cw + 1, b ? split + 2 : 1, cw - 2, b ? H - split - 3 : split - 2);
+    }
+    g.strokeStyle = '#7fd7ff'; g.lineWidth = 2;
+    if (s.ball !== null) { g.beginPath(); g.arc(s.ball * W, split / 2, 6, 0, Math.PI * 2); g.stroke(); }
+    if (s.pad !== null) { g.beginPath(); g.moveTo(s.pad * W - 12, H - 4); g.lineTo(s.pad * W + 12, H - 4); g.stroke(); }
+  }
+}
