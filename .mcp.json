@@ -1,8 +1,7 @@
 {
   "mcpServers": {
     "codebase-memory-mcp": {
-      "command": "bash",
-      "args": [".claude/bin/codebase-memory-mcp.sh"]
+      "command": "${HANAAM_CBM_CMD:-.claude/bin/codebase-memory-mcp.sh}"
     }
   }
 }

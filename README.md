@@ -95,5 +95,18 @@ python3 -m http.server 8000     # http://localhost:8000/
   `ui-designer`(화면 디자인), `data-visualization-engineer`(차트), `investment-researcher`(종목·투자 리서치).
   예: "appsec-engineer 로 로그인·탭 권한 코드 점검해줘"
 - **코드 지도** ([Codebase Memory MCP](https://github.com/DeusData/codebase-memory-mcp), MIT) — `.mcp.json` 에 등록돼 있습니다.
-  클라우드 세션은 시작할 때 자동 설치·색인하고(`.claude/bin/session-start.sh`), 내 PC 에서는 처음 켤 때 `~/.cache/hanaam-cbm` 에 설치합니다(python3 필요).
   "이 함수 바꾸면 어디가 영향받아?" 같은 질문에 파일을 다 읽지 않고 바로 답합니다.
+  - 클라우드 세션: 할 일 없음. 처음 켤 때 `.claude/bin/codebase-memory-mcp.sh` 가 설치하고, 시작 훅(`.claude/bin/session-start.sh`)이 색인합니다.
+  - Mac·Linux: 할 일 없음 (python3 로 `~/.cache/hanaam-cbm` 에 자동 설치).
+  - **Windows** (한 번만): PowerShell 에서 아래를 실행하고 Claude Code 를 다시 켭니다.
+
+    ```powershell
+    # 1) 공식 설치 프로그램 (%LOCALAPPDATA%\Programs\codebase-memory-mcp 에 설치)
+    Invoke-WebRequest -Uri https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.ps1 -OutFile install.ps1
+    Unblock-File .\install.ps1
+    PowerShell -ExecutionPolicy Bypass -File .\install.ps1
+    # 2) 이 레포가 설치된 프로그램을 바로 쓰게 지정
+    setx HANAAM_CBM_CMD "$env:LOCALAPPDATA\Programs\codebase-memory-mcp\codebase-memory-mcp.exe"
+    ```
+
+    `.mcp.json` 은 `HANAAM_CBM_CMD` 가 있으면 그 프로그램을, 없으면 bash 실행기를 씁니다.
