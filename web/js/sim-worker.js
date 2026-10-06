@@ -92,7 +92,11 @@ onmessage = (e) => {
     if (m.learn) { if (!probeCounts) probeCounts = new Uint16Array(n); probeCounts.fill(0); probing = true; }
     for (let t = 0; t < m.ticks; t++) step();
     stimActive = saved;
-    if (m.learn) { probing = false; accumulateEligibility(); }
+    if (m.learn) {
+      probing = false; accumulateEligibility();
+      // 판을 '본' 순간 발화한 뉴런을 화면에 남긴다 (프로브는 한 번에 지나가므로)
+      for (let i = 0; i < n; i++) if (probeCounts[i]) glow[i] = Math.max(glow[i], Math.min(1, 0.35 + 0.15 * probeCounts[i]));
+    }
     const counts = watchCounts.slice();
     watchCounts.fill(0);
     postMessage({ type: 'probeResult', id: m.id, counts }, [counts.buffer]);
