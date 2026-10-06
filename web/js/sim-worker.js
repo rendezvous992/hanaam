@@ -18,7 +18,6 @@ let watchPos = null;            // 뉴런 → 감시 목록 위치(-1 = 감시 �
 let watchCounts = null;         // 감시 뉴런별 스파이크 수 (프레임/프로브 단위)
 let probing = false;            // 프로브 중에는 모든 뉴런 발화 수를 센다(가소성용)
 let probeCounts = null;
-let elig = null;                // 시냅스별 적격 흔적: 함께 발화한 정도의 누적 (3요소 학습)
 let stimRate = 50;              // Hz, 자극 뉴런의 강제 발화율
 let ethanol = 0;                // 0..1
 let nicotine = 0;               // 0..1 — 니코틴성 ACh 수용체 작용제 근사: 흥분성 시냅스 증폭
@@ -93,16 +92,17 @@ onmessage = (e) => {
     for (let t = 0; t < m.ticks; t++) step();
     stimActive = saved;
     if (m.learn) {
-      probing = false; accumulateEligibility();
+      probing = false;   // probeCounts는 다음 reinforceCell까지 보관
       // 판을 '본' 순간 발화한 뉴런을 화면에 남긴다 (프로브는 한 번에 지나가므로)
       for (let i = 0; i < n; i++) if (probeCounts[i]) glow[i] = Math.max(glow[i], Math.min(1, 0.35 + 0.15 * probeCounts[i]));
     }
     const counts = watchCounts.slice();
     watchCounts.fill(0);
     postMessage({ type: 'probeResult', id: m.id, counts }, [counts.buffer]);
-  } else if (m.type === 'reinforce') {
-    // 도파민 신호 r(+1 보상 / -1 처벌)로, 이번 판에 함께 발화한 시냅스를 강화·약화
-    postMessage({ type: 'reinforced', id: m.id, ...reinforce(m.r, m.eta || 0.3) });
+  } else if (m.type === 'reinforceCell') {
+    // 도파민 신호 r로, 직전 프로브에서 post 뉴런들(고른 칸을 보는 시각 뉴런)을
+    // 발화시키는 데 함께한 입력 시냅스만 강화(r>0)·약화(r<0)한다
+    postMessage({ type: 'reinforced', id: m.id, ...reinforceCell(m.post, m.r, m.eta || 0.4) });
   } else if (m.type === 'stim') {
     // rate 미지정 시 전역 stimRate 사용 (명령 뉴런은 강한 고정 자극)
     if (m.on) stimActive[m.key] = { idx: new Uint32Array(m.indices), rate: m.rate || 0 };
@@ -122,36 +122,38 @@ onmessage = (e) => {
 
 let spareBuf = null;
 
-// 프로브 동안 시냅스 앞·뒤 뉴런이 함께 발화한 만큼 적격 흔적을 쌓는다.
-function accumulateEligibility() {
-  if (!elig) elig = new Float32Array(targets.length);
+// 3요소 학습(겨냥형): 직전 프로브에서 함께 발화한 (pre → post) 시냅스만,
+// Δw = η · r · √(pre발화·post발화 / 최대) · w. 부호(흥분/억제)는 유지된다.
+let postMask = null;
+function reinforceCell(post, r, eta) {
+  if (!probeCounts || !r) return { changed: 0, meanChange: 0 };
+  if (!postMask) postMask = new Uint8Array(n);
+  for (const t of post) if (probeCounts[t]) postMask[t] = 1;
+  let mx = 0;
   for (let i = 0; i < n; i++) {
     const ci = probeCounts[i];
     if (!ci) continue;
     for (let j = indptr[i], b = indptr[i + 1]; j < b; j++) {
-      const cj = probeCounts[targets[j]];
-      if (cj) elig[j] += ci * cj;
+      const t = targets[j];
+      if (postMask[t] && ci * probeCounts[t] > mx) mx = ci * probeCounts[t];
     }
   }
-}
-
-// 3요소 학습: Δw = η · r · (적격 흔적 / 최대값) · w. 부호(흥분/억제)는 유지된다.
-function reinforce(r, eta) {
-  if (!elig) return { changed: 0, meanChange: 0 };
-  let mx = 0;
-  for (let j = 0; j < elig.length; j++) if (elig[j] > mx) mx = elig[j];
   let changed = 0, sum = 0;
   if (mx > 0) {
-    for (let j = 0; j < elig.length; j++) {
-      const e = elig[j];
-      if (!e) continue;
-      const f = Math.max(0.5, Math.min(1.5, 1 + eta * r * Math.sqrt(e / mx)));
-      sum += Math.abs(weights[j] * (f - 1));
-      weights[j] *= f;
-      changed++;
+    for (let i = 0; i < n; i++) {
+      const ci = probeCounts[i];
+      if (!ci) continue;
+      for (let j = indptr[i], b = indptr[i + 1]; j < b; j++) {
+        const t = targets[j];
+        if (!postMask[t]) continue;
+        const f = Math.max(0.5, Math.min(1.5, 1 + eta * r * Math.sqrt(ci * probeCounts[t] / mx)));
+        sum += Math.abs(weights[j] * (f - 1));
+        weights[j] *= f;
+        changed++;
+      }
     }
   }
-  elig.fill(0);
+  for (const t of post) postMask[t] = 0;
   return { changed, meanChange: changed ? sum / changed : 0 };
 }
 

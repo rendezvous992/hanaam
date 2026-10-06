@@ -85,7 +85,7 @@ async function main() {
     loadVision().then(vis => {
       lab = new Lab({ worker, eye: new FlyEye(vis), fly, meta, vis });
       arena = new OmokArena({
-        n, positions: new Uint16Array(posBuf), vis,
+        n, positions: new Uint16Array(posBuf), vis, meta,
         // 경기장이 열려 있는 동안 메인 뇌·3D를 멈춰 두 뇌에 CPU를 몰아준다
         onOpen: () => { arenaOpen = true; document.body.classList.add('arena-open');
                         worker.postMessage({ type: 'params', running: false }); },

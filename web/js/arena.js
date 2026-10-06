@@ -3,9 +3,11 @@
 // 수 선택(정위 반응): 판 그림을 그 초파리의 광수용체에 40ms 보여주고, 수용장을 아는
 //   시각 뉴런 반응이 가장 강한 빈 칸에 둔다. 내 돌은 밝게, 상대 돌은 어둡게, 판 선은 희미하게
 //   보인다. 수를 고르는 규칙·점수표·선생님은 없다 — 뇌 활동이 어디서 가장 크게 일어나는지가 전부다.
-// 학습(3요소 가소성): 한 판 동안 함께 발화한 시냅스마다 적격 흔적이 쌓이고, 판이 끝나면
-//   이긴 뇌에는 보상 도파민(PAM), 진 뇌에는 처벌 도파민(PPL1) 신호로 그 시냅스가 강화·약화된다.
-//   오목 규칙(5목 판정)은 심판만 안다. 두 뇌는 같은 연결체로 시작해 경험으로 달라진다.
+// 학습(조련사식 3요소 가소성): 🎓 훈련 판에서는 수가 놓일 때마다 조련사(심판)가 결과를 보고
+//   좋은 일(5목·4·열린 3·상대 막기)이면 설탕 + 보상 도파민(PAM), 나쁜 일(이길 수 놓침·상대 5목
+//   방치·동떨어진 수)이면 쓴맛 + 처벌 도파민(PPL1)을 준다. 그 수를 고르게 만든 시냅스 —
+//   고른 칸을 보는 시각 뉴런으로 들어가며 방금 함께 발화한 입력 — 만 강화·약화된다.
+//   조련사는 수를 대신 고르지 않는다. ▶ 공식 대결은 학습 없이 실력만 겨룬다.
 import { loadWiring } from './data.js';
 import { FlyEye, SCREEN_W, SCREEN_H } from './vision.js';
 
@@ -30,13 +32,75 @@ function winner(board) {
   return board.every(v => v) ? 3 : 0;
 }
 
+// 칸 c를 지나는 p의 가장 긴 연속과 열린 끝 수
+function runInfo(board, c, p) {
+  let best = { run: 0, open: 0 };
+  const x0 = c % N, y0 = (c / N) | 0;
+  for (const [dx, dy] of DIRS) {
+    let run = 1, open = 0;
+    for (const s of [1, -1]) {
+      let x = x0 + dx * s, y = y0 + dy * s;
+      while (inB(x, y) && board[y * N + x] === p) { run++; x += dx * s; y += dy * s; }
+      if (inB(x, y) && !board[y * N + x]) open++;
+    }
+    if (run > best.run || (run === best.run && open > best.open)) best = { run, open };
+  }
+  return best;
+}
+
+function winningCells(board, p) {
+  const out = [];
+  for (let c = 0; c < N * N; c++) {
+    if (board[c]) continue;
+    board[c] = p;
+    if (runInfo(board, c, p).run >= 5) out.push(c);
+    board[c] = 0;
+  }
+  return out;
+}
+
+// 조련사: 방금 둔 수(before 판에서 me가 c에)의 결과만 보고 칭찬(+)·꾸지람(-)을 정한다
+function trainerReward(before, c, me) {
+  if (!before.some(v => v)) return [0, '첫 수'];
+  const opp = 3 - me;
+  const myWins = winningCells(before, me), oppWins = winningCells(before, opp);
+  const after = before.slice(); after[c] = me;
+  const own = runInfo(after, c, me);
+  const asOpp = before.slice(); asOpp[c] = opp;
+  const block = runInfo(asOpp, c, opp);
+  if (own.run >= 5) return [1, '5목 완성'];
+  if (myWins.length) return [-0.8, '이길 수를 놓침'];
+  if (oppWins.length && !oppWins.includes(c)) return [-0.8, '상대 5목을 못 막음'];
+  if (block.run >= 5) return [0.9, '상대 5목 저지'];
+  if (own.run === 4 && own.open) return [own.open === 2 ? 0.85 : 0.6, own.open === 2 ? '열린 4' : '4 만들기'];
+  if (block.run === 4 && block.open) return [0.6, '상대 4 막기'];
+  if (own.run === 3 && own.open === 2) return [0.45, '열린 3'];
+  if (block.run === 3 && block.open === 2) return [0.35, '상대 열린 3 막기'];
+  if (own.run === 3) return [0.2, '3 잇기'];
+  if (own.run === 2 && own.open) return [0.1, '2 잇기'];
+  const x0 = c % N, y0 = (c / N) | 0;
+  let nb = 0;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+    if ((dx || dy) && inB(x0 + dx, y0 + dy) && before[(y0 + dy) * N + x0 + dx]) nb++;
+  if (!nb) return [-0.4, '동떨어진 수'];
+  return [-0.05, '의미 없는 수'];
+}
+
 // ── 초파리 한 마리 = 뇌 워커 + 눈 ──────────────────────
 class FlyPlayer {
-  constructor(name, vis, n, wiring) {
-    this.name = name; this.vis = vis;
+  constructor(name, vis, n, wiring, rewardIdx) {
+    this.name = name; this.vis = vis; this.rewardIdx = rewardIdx;
     this.eye = new FlyEye(vis);
     this.record = { w: 0, l: 0, d: 0 };
-    this.practice = 0; this.synChanged = 0;
+    this.trained = 0; this.synChanged = 0;
+    this.praise = [];          // 훈련 판마다 칭찬받은 수의 비율
+    // 칸별로 그 칸을 보는 시각 뉴런(전역 인덱스) — 학습 대상
+    this.cellNeurons = Array.from({ length: N * N }, () => []);
+    const [u0, v0, u1, v1] = REGION;
+    for (let k = 0; k < vis.perIdx.length; k++) {
+      const i = Math.floor((this.eye.su[k] - u0) / (u1 - u0) * N), j = Math.floor((this.eye.sv[k] - v0) / (v1 - v0) * N);
+      if (i >= 0 && j >= 0 && i < N && j < N) this.cellNeurons[j * N + i].push(vis.perIdx[k]);
+    }
     this.lastSeen = null; this.lastMove = -1; this.glow = null;
     this.seq = 0; this.pending = new Map();
     const w = this.worker = new Worker('js/sim-worker.js');
@@ -109,30 +173,32 @@ class FlyPlayer {
     return best;
   }
 
-  // 판이 끝나면 도파민 신호: r=+1 보상(PAM), -1 처벌(PPL1), 0 흔적만 지움
-  async dopamine(r) {
-    const idx = r > 0 ? this.vis.info.pam : r < 0 ? this.vis.info.ppl1 : null;
-    if (idx) {
-      this.worker.postMessage({ type: 'stim', key: 'da', on: true, rate: 150, indices: idx });
-      setTimeout(() => this.worker.postMessage({ type: 'stim', key: 'da', on: false }), 600);
-    }
-    const res = await this.call({ type: 'reinforce', r, eta: 0.3 });
-    if (r) this.synChanged += res.changed;
-    return res;
+  // 조련사 보상: 맛(설탕/쓴맛) + 도파민(PAM/PPL1)을 짧게 주고, 고른 칸 뉴런으로의 입력 시냅스를 바꾼다
+  async reward(c, r) {
+    if (!r) return;
+    const idx = r > 0 ? this.rewardIdx.good : this.rewardIdx.bad;
+    this.worker.postMessage({ type: 'stim', key: 'da', on: true, rate: 150, indices: idx });
+    setTimeout(() => this.worker.postMessage({ type: 'stim', key: 'da', on: false }), 300);
+    const res = await this.call({ type: 'reinforceCell', post: this.cellNeurons[c], r, eta: 0.4 });
+    this.synChanged += res.changed;
   }
 }
 
 // ── 경기장 UI ────────────────────────────────────────
 export class OmokArena {
-  constructor({ n, positions, vis, onOpen, onClose }) {
+  constructor({ n, positions, vis, meta, onOpen, onClose }) {
     Object.assign(this, { n, positions, vis, onOpen, onClose });
+    this.rewardIdx = {
+      good: [...meta.presets.sugar.idx, ...vis.info.pam],
+      bad: [...meta.presets.bitter.idx, ...vis.info.ppl1],
+    };
     this.el = document.getElementById('arena');
     this.boardCv = document.getElementById('omok-board');
     this.board = new Int8Array(N * N);
     this.busy = false; this.human = false; this.lastMove = -1;
     document.getElementById('omok-close').onclick = () => this.close();
-    document.getElementById('omok-match').onclick = () => this.run(1, 450);
-    document.getElementById('omok-train').onclick = () => this.run(5, 0);
+    document.getElementById('omok-match').onclick = () => this.run(1, 450, false);
+    document.getElementById('omok-train').onclick = () => this.run(10, 0, true);
     document.getElementById('omok-human').onclick = () => this.humanGame();
     document.getElementById('omok-stop').onclick = () => { this.stop = true; };
     this.boardCv.onclick = e => this.click(e);
@@ -146,7 +212,7 @@ export class OmokArena {
     if (!this.flies) {
       this.say('뇌 두 개를 준비하는 중… (연결체 데이터를 두 벌 더 불러옵니다)');
       const [wa, wb] = await Promise.all([loadWiring(), loadWiring()]);
-      this.flies = { A: new FlyPlayer('A', this.vis, this.n, wa), B: new FlyPlayer('B', this.vis, this.n, wb) };
+      this.flies = { A: new FlyPlayer('A', this.vis, this.n, wa, this.rewardIdx), B: new FlyPlayer('B', this.vis, this.n, wb, this.rewardIdx) };
       for (const k of ['A', 'B']) {
         document.getElementById(`omok-eth-${k}`).oninput = e => {
           const v = +e.target.value / 100;
@@ -155,7 +221,7 @@ export class OmokArena {
         };
       }
       this.board.fill(0); this.drawBoard(); this.updateCards();
-      this.say('준비 완료. 두 뇌는 똑같은 연결체로 시작합니다. ▶ 대결로 붙여 보세요.');
+      this.say('준비 완료. 두 뇌는 똑같은 연결체로 시작합니다. 🎓 조련 훈련으로 가르친 뒤 ▶ 대결로 붙여 보세요.');
     } else {
       for (const f of Object.values(this.flies)) f.setRunning(true);
     }
@@ -170,33 +236,46 @@ export class OmokArena {
     this.onClose?.();
   }
 
-  // A(흑) vs B(백)를 games판. 판이 끝날 때마다 도파민으로 두 뇌를 바꾼다.
-  async run(games, delay) {
+  // A(흑) vs B(백)를 games판. train이면 수마다 조련사가 칭찬·꾸지람하고 뇌가 배운다.
+  async run(games, delay, train) {
     if (this.busy || !this.flies) return;
     this.busy = true; this.stop = false; this.human = false;
+    const { A, B } = this.flies;
     for (let gi = 0; gi < games && !this.stop; gi++) {
       this.board.fill(0); this.lastMove = -1; this.drawBoard();
       let me = 1, w = 0, moves = 0;
+      const tally = { A: [0, 0], B: [0, 0] };          // [칭찬 수, 전체 수]
+      let note = '';
       while (!(w = winner(this.board)) && !this.stop) {
         const k = me === 1 ? 'A' : 'B';
-        this.say(`${games > 1 ? `연습 ${gi + 1}/${games} · ` : ''}초파리 ${k}(${me === 1 ? '흑' : '백'}) 차례 — 판을 보는 중… (${moves + 1}수)`);
+        const head = train ? `🎓 훈련 ${gi + 1}/${games} · ` : '';
+        this.say(`${head}초파리 ${k}(${me === 1 ? '흑' : '백'}) 차례 — 판을 보는 중… (${moves + 1}수)${note}`);
+        const before = this.board.slice();
         const c = await this.flies[k].choose(this.board, me);
         this.board[c] = me; this.lastMove = c; moves++;
         this.drawBoard(); this.drawSeen(k);
+        if (train) {
+          const [r, why] = trainerReward(before, c, me);
+          tally[k][1]++; if (r > 0) tally[k][0]++;
+          note = ` · ${k}: ${why} ${r > 0 ? '🍬' : r < 0 ? '☕' : ''}`;
+          await this.flies[k].reward(c, r);
+        }
         me = 3 - me;
         if (delay) await sleep(delay);
       }
       if (!w) break;
-      const { A, B } = this.flies;
       if (w === 3) { A.record.d++; B.record.d++; }
       else { (w === 1 ? A : B).record.w++; (w === 1 ? B : A).record.l++; }
-      if (games > 1) { A.practice++; B.practice++; }
-      this.say(`${w === 3 ? '무승부' : `초파리 ${w === 1 ? 'A(흑)' : 'B(백)'} 승리! 🎉`} (${moves}수) — 도파민으로 두 뇌를 바꾸는 중…`);
-      await Promise.all([A.dopamine(w === 1 ? 1 : w === 2 ? -1 : 0), B.dopamine(w === 2 ? 1 : w === 1 ? -1 : 0)]);
+      if (train) for (const k of ['A', 'B']) {
+        const f = this.flies[k]; f.trained++;
+        f.praise.push(tally[k][1] ? tally[k][0] / tally[k][1] : 0);
+      }
+      this.say(`${w === 3 ? '무승부' : `초파리 ${w === 1 ? 'A(흑)' : 'B(백)'} 승리! 🎉`} (${moves}수)`);
       this.updateCards();
       if (delay) await sleep(1200);
     }
-    this.say(this.stop ? '멈췄습니다.' : '끝. 다시 ▶ 대결하거나 🏋️ 연습 경기로 더 겨루게 해 보세요.');
+    if (this.stop) this.say('멈췄습니다.');
+    else if (train) this.say(`훈련 ${games}판 끝. 카드의 칭찬 비율이 오르는지 보세요. ▶ 대결은 학습 없이 실력만 겨룹니다.`);
     this.busy = false;
   }
 
@@ -227,8 +306,7 @@ export class OmokArena {
       this.human = false;
       const A = this.flies.A;
       if (w === 2) A.record.w++; else if (w === 1) A.record.l++; else A.record.d++;
-      this.say(w === 3 ? '무승부!' : w === 1 ? '내가 이겼다! 초파리 A는 처벌 도파민을 받습니다.' : '초파리 A 승리! 보상 도파민을 받습니다. 🎉');
-      await A.dopamine(w === 2 ? 1 : w === 1 ? -1 : 0);
+      this.say(w === 3 ? '무승부!' : w === 1 ? '내가 이겼다!' : '초파리 A 승리! 🎉');
       this.updateCards();
     }
   }
@@ -238,10 +316,14 @@ export class OmokArena {
       const f = this.flies?.[k]; if (!f) continue;
       const r = f.record;
       document.getElementById(`omok-info-${k}`).textContent =
-        `${r.w}승 ${r.l}패 ${r.d}무 · 연습 ${f.practice}판`;
-      document.getElementById(`omok-pref-${k}`).textContent = f.synChanged
-        ? `경험으로 바뀐 시냅스 ${f.synChanged.toLocaleString()}개`
-        : '아직 경험 없음 (원래 연결체 그대로)';
+        `${r.w}승 ${r.l}패 ${r.d}무 · 훈련 ${f.trained}판`;
+      const avg = a => Math.round(a.reduce((x, y) => x + y, 0) / a.length * 100);
+      const p = f.praise;
+      document.getElementById(`omok-pref-${k}`).textContent = !p.length
+        ? '아직 훈련 전 (원래 연결체 그대로)'
+        : p.length < 4
+          ? `칭찬받은 수 ${avg(p)}% · 바뀐 시냅스 ${f.synChanged.toLocaleString()}개`
+          : `칭찬받은 수: 처음 ${avg(p.slice(0, 3))}% → 최근 ${avg(p.slice(-3))}% · 바뀐 시냅스 ${f.synChanged.toLocaleString()}개`;
       this.drawSeen(k);
     }
   }
