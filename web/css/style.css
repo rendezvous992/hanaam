@@ -208,8 +208,7 @@ footer a { color: #9db4ff; text-decoration: none; }
 /* ── 오목 경기장 ── */
 #arena {
   position: fixed; inset: 0; z-index: 20;
-  background: rgba(3, 5, 12, 0.88);
-  backdrop-filter: blur(6px);
+  background: #03050c;
   overflow-y: auto;
   padding: 24px 16px;
 }
@@ -238,3 +237,7 @@ footer a { color: #9db4ff; text-decoration: none; }
   .board-col { order: -1; }
   #lab-card { top: auto; bottom: calc(42vh + 24px); left: 12px; right: 12px; width: auto; }
 }
+
+/* 경기장이 열려 있는 동안 뒤 화면(WebGL)을 아예 그리지 않는다 */
+body.arena-open #brain, body.arena-open #fly-stage, body.arena-open #panel,
+body.arena-open #lab-card, body.arena-open header { display: none; }
