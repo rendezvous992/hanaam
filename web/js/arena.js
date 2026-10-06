@@ -2,7 +2,7 @@
 // 자리에는 명단의 어떤 초파리든 앉힐 수 있고(➕ 새 초파리 = 원래 연결체), 초파리마다 뇌가 따로 저장된다.
 // 탁구 규칙·조련은 pong-duel.js.
 //
-// 수 선택(정위 반응): 판 그림을 그 초파리의 광수용체에 40ms 보여주고, 수용장을 아는
+// 수 선택(정위 반응): 판 그림을 그 초파리의 광수용체에 20ms 보여주고, 수용장을 아는
 //   시각 뉴런 반응이 가장 강한 빈 칸에 둔다. 내 돌은 밝게, 상대 돌은 어둡게, 판 선은 희미하게
 //   보인다. 수를 고르는 규칙·점수표·선생님은 없다 — 뇌 활동이 어디서 가장 크게 일어나는지가 전부다.
 // 학습(조련사식 3요소 가소성): 🎓 훈련 판에서는 수가 놓일 때마다 조련사(심판)가 결과를 보고
@@ -21,13 +21,13 @@ import { PongDuel } from './pong-duel.js';
 
 const N = 9;
 const REGION = [0.15, 0.15, 0.85, 0.85];
-const PROBE_TICKS = 80;                     // 40ms 반응
+const PROBE_TICKS = 40;                     // 20ms 반응 — 수용장을 잰 창과 같다 (40ms일 때와 실력 차이 없음, 2배 빠름)
 const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
 const inB = (x, y) => x >= 0 && y >= 0 && x < N && y < N;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // 심판: 5목 판정 (1 흑 승, 2 백 승, 3 무승부, 0 진행 중)
-function winner(board) {
+export function winner(board) {
   for (let c = 0; c < N * N; c++) {
     const p = board[c]; if (!p) continue;
     const x = c % N, y = (c / N) | 0;
@@ -68,7 +68,7 @@ function winningCells(board, p) {
 }
 
 // 조련사: 방금 둔 수(before 판에서 me가 c에)의 결과만 보고 칭찬(+)·꾸지람(-)을 정한다
-function trainerReward(before, c, me) {
+export function trainerReward(before, c, me) {
   if (!before.some(v => v)) return [0, '첫 수'];
   const opp = 3 - me;
   const myWins = winningCells(before, me), oppWins = winningCells(before, opp);
@@ -188,7 +188,7 @@ class FlyPlayer {
   async choose(board, me) {
     const rates = this.ratesFor(board, me);
     const keep = rates.slice();
-    const { counts } = await this.call({ type: 'probe', key: 'vis', rates, ticks: PROBE_TICKS, learn: true },
+    const { counts } = await this.call({ type: 'probe', key: 'vis', rates, ticks: this.probeTicks ?? PROBE_TICKS, learn: true },
                                       [rates.buffer]);
     // 쉬는 동안에도 판을 계속 바라보게 (뇌 화면이 살아 있도록)
     this.worker.postMessage({ type: 'drive', key: 'vis', rates: keep }, [keep.buffer]);
@@ -219,7 +219,7 @@ class FlyPlayer {
 }
 
 const HINT = {
-  omok: '두 자리 모두 실제 연결체 뇌(뉴런 139,255개)입니다. 판을 40ms 보여주면 <b>그 뇌의 시각 뉴런이 가장 강하게 반응한 빈 칸</b>에 둡니다. 규칙·점수표·선생님은 없고, 5목 판정은 심판만 합니다. <b>🎓 조련</b>에서는 수가 놓일 때마다 조련사가 결과만 보고 칭찬(설탕 + 보상 도파민)이나 꾸지람(쓴맛 + 처벌 도파민)을 주고, 그 수를 고르게 만든 시냅스만 강화·약화됩니다. ▶ 대결은 학습 없이 실력만 겨룹니다. 위 선택 상자로 자리에 앉힐 초파리를 바꾸거나 ➕ 새 초파리를 만들 수 있습니다.',
+  omok: '두 자리 모두 실제 연결체 뇌(뉴런 139,255개)입니다. 판을 20ms 보여주면 <b>그 뇌의 시각 뉴런이 가장 강하게 반응한 빈 칸</b>에 둡니다. 규칙·점수표·선생님은 없고, 5목 판정은 심판만 합니다. <b>🎓 조련</b>에서는 수가 놓일 때마다 조련사가 결과만 보고 칭찬(설탕 + 보상 도파민)이나 꾸지람(쓴맛 + 처벌 도파민)을 주고, 그 수를 고르게 만든 시냅스만 강화·약화됩니다. ▶ 대결은 학습 없이 실력만 겨룹니다. 위 선택 상자로 자리에 앉힐 초파리를 바꾸거나 ➕ 새 초파리를 만들 수 있습니다.',
   pong: '두 초파리가 마주 보고 탁구를 칩니다. 게임 시간 0.1초마다 각자의 눈에 <b>공과 자기 패들만</b> 20ms 보여주고, 시각 뉴런이 공을 가장 강하게 본 위치로 패들이 갑니다(정위 반응, 학습된 디코더 없음). <b>🎓 조련</b>에서는 공이 올 때마다 조련사가 떨어질 곳으로 다가갔는지만 보고 칭찬·꾸지람, 받아내면 설탕 + 보상 도파민, 놓치면 쓴맛 + 처벌 도파민을 주고, 그 움직임을 만든 시냅스만 바뀝니다. 🧑 나 vs 흑은 판 위에서 마우스·손가락으로 위쪽 패들을 움직입니다.',
 };
 const CAP = {
