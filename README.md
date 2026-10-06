@@ -87,3 +87,13 @@ python3 -m http.server 8000     # http://localhost:8000/
 | `server/db.py` | SQLite / Postgres 연결과 테이블 |
 | `api/index.py`, `vercel.json`, `scripts/build-public.mjs` | Vercel 배포 |
 | `deploy/` | 설치형 서버 스크립트 |
+
+## Claude Code 로 이 레포 고치기
+
+- **전문가 에이전트** (`.claude/agents/`) — [agency-agents](https://github.com/msitarzewski/agency-agents)(MIT)에서 골라 이 프로젝트 맥락을 덧붙였습니다.
+  `code-reviewer`(코드 리뷰), `minimal-change-engineer`(꼭 필요한 만큼만 고치기), `appsec-engineer`(로그인·권한 보안 점검),
+  `ui-designer`(화면 디자인), `data-visualization-engineer`(차트), `investment-researcher`(종목·투자 리서치).
+  예: "appsec-engineer 로 로그인·탭 권한 코드 점검해줘"
+- **코드 지도** ([Codebase Memory MCP](https://github.com/DeusData/codebase-memory-mcp), MIT) — `.mcp.json` 에 등록돼 있습니다.
+  클라우드 세션은 시작할 때 자동 설치·색인하고(`.claude/bin/session-start.sh`), 내 PC 에서는 처음 켤 때 `~/.cache/hanaam-cbm` 에 설치합니다(python3 필요).
+  "이 함수 바꾸면 어디가 영향받아?" 같은 질문에 파일을 다 읽지 않고 바로 답합니다.
