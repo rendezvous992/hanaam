@@ -25,4 +25,6 @@ function walk(dir, rel) {
   }
 }
 walk(ROOT, "");
+// 솜 친구들(plush/)은 로그인 없이 여는 독립 앱이라 화면까지 통째로 내보낸다.
+cpSync(join(ROOT, "plush"), join(OUT, "plush"), { recursive: true });
 console.log("public/ 에 정적 파일 " + count + "개를 복사했습니다.");

@@ -87,3 +87,14 @@ python3 -m http.server 8000     # http://localhost:8000/
 | `server/db.py` | SQLite / Postgres 연결과 테이블 |
 | `api/index.py`, `vercel.json`, `scripts/build-public.mjs` | Vercel 배포 |
 | `deploy/` | 설치형 서버 스크립트 |
+| `plush/` | 솜 친구들 (3D 털 인형 놀이, 로그인 없이 `/plush/`) |
+
+## 솜 친구들 (`/plush/`)
+
+털로 덮인 3D 솜 인형(문어·거미·용·곰·사자·토끼)을 잡아 흔들고, 던지고, 꾹 누르고, 털결을 빗는 놀이입니다.
+업무 화면과 따로 동작하며 로그인 없이 열립니다.
+
+- 주소: 배포된 사이트 뒤에 `/plush/` (예: `https://<프로젝트>.vercel.app/plush/`)
+- 휴대폰 앱처럼 쓰기: 주소를 연 뒤 iPhone Safari **공유 → 홈 화면에 추가**, Android Chrome **메뉴 → 앱 설치(홈 화면에 추가)**
+- 한 번 열면 인터넷 없이도 열립니다. 파일을 고친 뒤에는 `plush/sw.js` 의 `VERSION` 을 올려야 기기에 새 버전이 반영됩니다.
+- `plush/three.min.js` 는 three.js r128 (MIT 라이선스) 입니다.
