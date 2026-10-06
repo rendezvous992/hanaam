@@ -226,6 +226,10 @@ footer a { color: #9db4ff; text-decoration: none; }
 .fly-card > canvas { width: 100%; max-width: 100%; aspect-ratio: 22 / 13; border-radius: 8px; display: block; background: #060914; }
 .arena-tabs { display: flex; gap: 6px; margin-left: auto; margin-right: 10px; }
 .arena-tabs button { padding: 6px 12px; font-size: 13px; }
+.slot-row { display: flex; gap: 6px; margin: -2px 0 8px; }
+.slot-row .slot-pick { flex: 1; min-width: 0; margin: 0; }
+.del-btn { flex: none; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
+.del-btn.armed { background: #5a1a1a; border-color: #ff6b6b; }
 .slot-pick { width: 100%; margin: -2px 0 8px; padding: 5px 6px; font-size: 12.5px; background: #0b1020; color: var(--text); border: 1px solid rgba(255,255,255,.15); border-radius: 6px; }
 .row.row3 { grid-template-columns: repeat(3, 1fr); }
 .row.row3 button { font-size: 11.5px; padding-left: 4px; padding-right: 4px; }

@@ -137,6 +137,24 @@ export class BrainStore {
     });
   }
 
+  // 초파리 한 마리를 저장소에서 지운다 (뇌 조각 → 메타 순서)
+  remove(id) {
+    if (!this.db || !this.canWrite) return Promise.resolve(false);
+    return this.enqueue(async () => {
+      try {
+        const ref = this.db.doc(`flies/${id}`);
+        const cur = await ref.get();
+        if (cur.exists) {
+          const m = cur.data();
+          if (m.ver) for (let i = 0; i < (m.chunks || 0); i++)
+            await this.db.doc(`flies/${id}/brain/${m.ver}_${i}`).delete().catch(() => {});
+        }
+        await ref.delete();
+        return true;
+      } catch (e) { return this.fail(e); }
+    });
+  }
+
   fail(e) {
     if (e?.code === 'invalid_argument' || e?.code === 'revoked' || e?.code === 'not_granted') {
       this.canWrite = false; this.state = 'readonly';
@@ -148,7 +166,7 @@ export class BrainStore {
 
 function trimMeta(m) {
   return {
-    name: String(m.name || '').slice(0, 16), createdAt: m.createdAt || Date.now(),
+    name: String(m.name || '').slice(0, 16), createdAt: m.createdAt || 0,
     record: m.record, trained: m.trained, synChanged: m.synChanged,
     praise: m.praise.slice(-MAX_PRAISE).map(x => Math.round(x * 1000) / 1000),
     pong: { w: m.pong.w, l: m.pong.l, trained: m.pong.trained, hits: m.pong.hits.slice(-MAX_PRAISE) },

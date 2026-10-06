@@ -51,7 +51,10 @@
     <div class="arena-grid">
       <section class="fly-card">
         <h3><span id="omok-name-A">초파리 A</span> · <span id="omok-side-A">흑</span></h3>
-        <select id="slot-A" class="slot-pick" aria-label="이 자리에 둘 초파리"></select>
+        <div class="slot-row">
+          <select id="slot-A" class="slot-pick" aria-label="이 자리에 둘 초파리"></select>
+          <button id="del-A" class="del-btn" title="이 초파리 삭제">🗑</button>
+        </div>
         <canvas id="omok-brain-A" width="220" height="130"></canvas>
         <div class="seen-row"><canvas id="omok-seen-A" width="108" height="108"></canvas><span id="omok-seen-cap-A"></span></div>
         <p id="omok-info-A" class="info"></p>
@@ -78,7 +81,10 @@
       </section>
       <section class="fly-card">
         <h3><span id="omok-name-B">초파리 B</span> · <span id="omok-side-B">백</span></h3>
-        <select id="slot-B" class="slot-pick" aria-label="이 자리에 둘 초파리"></select>
+        <div class="slot-row">
+          <select id="slot-B" class="slot-pick" aria-label="이 자리에 둘 초파리"></select>
+          <button id="del-B" class="del-btn" title="이 초파리 삭제">🗑</button>
+        </div>
         <canvas id="omok-brain-B" width="220" height="130"></canvas>
         <div class="seen-row"><canvas id="omok-seen-B" width="108" height="108"></canvas><span id="omok-seen-cap-B"></span></div>
         <p id="omok-info-B" class="info"></p>

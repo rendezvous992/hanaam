@@ -150,7 +150,7 @@ class FlyPlayer {
   restore(m) {
     this.id = m.id ?? this.id ?? this.slot;
     this.name = m.name || `초파리 ${this.id}`;
-    this.createdAt = m.createdAt || Date.now();
+    this.createdAt = m.createdAt || 0;
     this.record = { w: 0, l: 0, d: 0, ...m.record };
     this.trained = m.trained || 0;
     this.praise = Array.isArray(m.praise) ? m.praise.slice() : [];
@@ -226,6 +226,13 @@ const CAP = {
   omok: '{n}가 본 판<br>밝을수록 뇌 반응이 강함<br>파란 테두리 = 고른 칸',
   pong: '{n}가 본 화면(자기 시점)<br>위 = 공, 아래 = 자기 패들<br>파란 표시 = 뇌가 본 위치',
 };
+// 이름 뒤 조사: 받침 있으면 a(이/을), 없으면 b(가/를). 숫자는 읽는 소리로.
+function josa(name, a, b) {
+  const c = String(name).trim().slice(-1), code = c.charCodeAt(0);
+  if (code >= 0xAC00 && code <= 0xD7A3) return name + ((code - 0xAC00) % 28 ? a : b);
+  return name + ('013678'.includes(c) ? a : b);
+}
+
 const AUTOSAVE = { omok: 10, pong: 20 };       // 무한 조련 중 이만큼마다 저장 (판 / 점)
 
 // ── 경기장 UI ────────────────────────────────────────
@@ -257,7 +264,10 @@ export class OmokArena {
     $('omok-reset').onclick = () => this.resetBrains();
     $('new-fly').onclick = () => this.newFly();
     $('new-fly-name').onkeydown = e => { if (e.key === 'Enter') this.newFly(); };
-    for (const k of ['A', 'B']) $(`slot-${k}`).onchange = e => this.seat(k, e.target.value);
+    for (const k of ['A', 'B']) {
+      $(`slot-${k}`).onchange = e => this.seat(k, e.target.value);
+      $(`del-${k}`).onclick = () => this.deleteFly(k);
+    }
     this.boardCv.onclick = e => this.click(e);
     this.boardCv.onpointermove = e => {
       if (!this.pong) return;
@@ -331,9 +341,13 @@ export class OmokArena {
     try {
       for (const m of await this.store.list()) this.roster.set(m.id, m);
     } catch (e) { this.store.lastError = e?.message || String(e); }
-    for (const id of ['A', 'B']) if (!this.roster.has(id)) this.roster.set(id, { id, name: `초파리 ${id}` });
+    // 저장된 초파리가 없으면 처음 두 마리(A·B)로 시작한다
+    if (!this.roster.size) for (const id of ['A', 'B']) this.roster.set(id, { id, name: `초파리 ${id}` });
+    while (this.roster.size < 2) this.makeFly();
+    const [ia, ib] = this.sortedRoster().map(m => m.id);
     let found = false;
-    for (const k of ['A', 'B']) found = (await this.loadInto(k, k)) || found;
+    found = (await this.loadInto('A', ia)) || found;
+    found = (await this.loadInto('B', ib)) || found;
     this.fillPickers();
     return found;
   }
@@ -380,28 +394,67 @@ export class OmokArena {
     this.busy = false;
     this.fillPickers(); this.updateCards(); this.showSave();
     if (this.game === 'pong') this.pong.reset(); else { this.board.fill(0); this.lastMove = -1; this.drawBoard(); }
-    this.say(`${this.flies[k].name}가 ${this.sideName(k)} 자리에 앉았습니다.`);
+    this.say(`${josa(this.flies[k].name, '이', '가')} ${this.sideName(k)} 자리에 앉았습니다.`);
+  }
+
+  // 명단에 새 초파리(원래 연결체)를 올리고 id를 돌려준다
+  makeFly(name) {
+    const used = new Set([...this.roster.values()].map(m => m.name));
+    name = (name || '').trim().slice(0, 16);
+    if (!name) { let i = this.roster.size; do name = `초파리 ${++i}`; while (used.has(name)); }
+    const id = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    this.roster.set(id, { id, name, createdAt: Date.now() });
+    return id;
+  }
+
+  sortedRoster() {
+    return [...this.roster.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0) || String(a.id).localeCompare(b.id));
   }
 
   async newFly() {
     if (this.busy || !this.flies) return;
     const input = document.getElementById('new-fly-name');
-    const used = new Set([...this.roster.values()].map(m => m.name));
-    let name = input.value.trim().slice(0, 16);
-    if (!name) { let i = this.roster.size; do name = `초파리 ${++i}`; while (used.has(name)); }
-    const id = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-    this.roster.set(id, { id, name, createdAt: Date.now() });
+    const id = this.makeFly(input.value), name = this.roster.get(id).name;
     input.value = '';
     await this.seat('B', id);
     this.flies.B.dirty = true;
     await this.save(false);
-    this.say(`🐣 새 초파리 "${name}"가 태어났습니다 — 원래 연결체 그대로입니다. ${this.sideName('B')} 자리에 앉혔어요.`);
+    this.say(`🐣 새 초파리 "${name}"${josa(name, '이', '가').slice(name.length)} 태어났습니다 — 원래 연결체 그대로입니다. ${this.sideName('B')} 자리에 앉혔어요.`);
+  }
+
+  // 🗑 두 번 눌러야 지금 자리에 앉은 초파리를 명단과 공유 저장소에서 지운다.
+  //   빈 자리에는 명단의 다른 초파리가(없으면 새로 태어난 초파리가) 앉는다.
+  async deleteFly(k) {
+    if (this.busy || !this.flies) return;
+    const btn = document.getElementById(`del-${k}`), f = this.flies[k];
+    if (this.delArmed !== k) {
+      this.delArmed = k; btn.classList.add('armed'); btn.textContent = '🗑 정말?';
+      this.say(`🗑 한 번 더 누르면 "${f.name}"의 뇌와 기록이 영구히 지워집니다.`);
+      clearTimeout(this.delTimer);
+      this.delTimer = setTimeout(() => { this.delArmed = null; btn.classList.remove('armed'); btn.textContent = '🗑'; }, 3000);
+      return;
+    }
+    this.delArmed = null; btn.classList.remove('armed'); btn.textContent = '🗑';
+    this.busy = true;
+    const { id, name } = f, shared = this.store.state === 'shared';
+    if (shared) await this.store.remove(id);
+    this.roster.delete(id); this.local.delete(id);
+    const otherId = this.flies[k === 'A' ? 'B' : 'A'].id;
+    let next = this.sortedRoster().map(m => m.id).find(x => x !== otherId), born = false;
+    if (!next) { next = this.makeFly(); born = true; }
+    await this.loadInto(k, next);
+    if (born) this.flies[k].dirty = true;
+    this.busy = false;
+    if (born) await this.save(false);
+    this.fillPickers(); this.updateCards(); this.showSave();
+    if (this.game === 'pong') this.pong.reset(); else { this.board.fill(0); this.lastMove = -1; this.drawBoard(); }
+    this.say(`🗑 "${name}"${josa(name, '을', '를').slice(name.length)} ${shared ? '삭제했습니다' : '이 창의 명단에서 지웠습니다(공유 저장소에는 남아 있음)'}. ${this.sideName(k)} 자리에는 ${born ? '새로 태어난 ' : ''}${josa(this.flies[k].name, '이', '가')} 앉았습니다.`);
   }
 
   sideName(k) { return this.game === 'pong' ? (k === 'A' ? '아래' : '위') : (k === 'A' ? '흑' : '백'); }
 
   fillPickers() {
-    const list = [...this.roster.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0) || String(a.id).localeCompare(b.id));
+    const list = this.sortedRoster();
     for (const k of ['A', 'B']) {
       const sel = document.getElementById(`slot-${k}`);
       sel.textContent = '';
@@ -603,7 +656,7 @@ export class OmokArena {
     }
     this.busy = false;
     this.updateCards();
-    this.say(`${this.flies.A.name}·${this.flies.B.name}를 원래 연결체로 되돌렸습니다.`);
+    this.say(`${this.flies.A.name}·${josa(this.flies.B.name, '을', '를')} 원래 연결체로 되돌렸습니다.`);
     await this.save(true);
   }
 
@@ -611,7 +664,7 @@ export class OmokArena {
   humanGame() {
     if (this.busy || !this.flies) return;
     this.board.fill(0); this.lastMove = -1; this.human = true; this.drawBoard();
-    this.say(`나(흑) 차례 — 판을 클릭해서 두세요. ${this.flies.A.name}가 백으로 응수합니다.`);
+    this.say(`나(흑) 차례 — 판을 클릭해서 두세요. ${josa(this.flies.A.name, '이', '가')} 백으로 응수합니다.`);
   }
 
   async click(e) {

@@ -9,6 +9,15 @@
 let n = 0;
 let indptr, targets, weights;   // CSR
 let orig = null;                // 학습 전 원래 가중치(연결체 그대로) — 저장할 때 차이만 뽑는다
+// 학습으로 바뀐 세기의 한계: 원래(시냅스 개수)의 0.05~4배, 부호는 그대로. 한계가 없으면 칭찬이
+// 반복된 몇몇 시냅스가 수억 배로 커져 스파이크 하나로 목표 뉴런을 강제로 켜 버린다.
+const W_MIN = 0.05, W_MAX = 4;
+function bound(j, w) {
+  const o = orig[j], a = Math.abs(o);
+  if (Math.abs(w) > a * W_MAX) return Math.sign(o) * a * W_MAX;
+  if (Math.abs(w) < a * W_MIN) return Math.sign(o) * a * W_MIN;
+  return w;
+}
 let chg = null, nChg = 0;       // 시냅스별 '한 번이라도 바뀌었나' 표시와 그 개수(누적, 중복 없이)
 let v, refr, glow, ad;          // 상태 (ad: 적응형 임계값 증분)
 let readoutMask = null;         // 뉴런별 비트마스크: 어떤 판독 그룹 소속인지
@@ -120,7 +129,7 @@ onmessage = (e) => {
     weights.set(orig); chg.fill(0);
     const idx = new Uint32Array(m.idx), val = new Float32Array(m.val);
     let k = 0;
-    for (let q = 0; q < idx.length; q++) if (idx[q] < weights.length) { weights[idx[q]] = val[q]; chg[idx[q]] = 1; k++; }
+    for (let q = 0; q < idx.length; q++) if (idx[q] < weights.length) { weights[idx[q]] = bound(idx[q], val[q]); chg[idx[q]] = 1; k++; }
     nChg = k;
     postMessage({ type: 'imported', id: m.id, changed: k });
   } else if (m.type === 'stim') {
@@ -168,7 +177,7 @@ function reinforceCell(post, r, eta) {
         if (!postMask[t]) continue;
         const f = Math.max(0.5, Math.min(1.5, 1 + eta * r * Math.sqrt(ci * probeCounts[t] / mx)));
         sum += Math.abs(weights[j] * (f - 1));
-        weights[j] *= f;
+        weights[j] = bound(j, weights[j] * f);
         changed++;
         if (!chg[j]) { chg[j] = 1; nChg++; }
       }
