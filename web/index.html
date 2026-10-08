@@ -17,6 +17,12 @@
   <p><span class="nb">실제 초파리 커넥톰(FlyWire v783)<span class="sep">·</span></span> <span class="nb">뉴런 139,255개<span class="sep">·</span></span> <span class="nb">시냅스 연결 270만 쌍<span class="sep">·</span></span> <span class="nb">실시간 스파이킹 시뮬레이션</span></p>
 </header>
 
+<div id="zoom" role="group" aria-label="뇌 확대·축소">
+  <button id="zoom-in" aria-label="확대">+</button>
+  <input id="zoom-bar" type="range" min="0" max="100" value="40" aria-label="확대 정도">
+  <button id="zoom-out" aria-label="축소">−</button>
+</div>
+
 <div id="fly-stage">
   <div id="fly-head"><span id="fly-sub">행동 (뇌 → 몸)</span><b id="fly-caption">대기 🪰</b></div>
   <div id="fly-svg"></div>

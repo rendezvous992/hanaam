@@ -63,7 +63,11 @@ export class BrainRenderer {
     this.n = n;
     this.rotX = 0.12;
     this.rotY = 0.18;
-    this.dist = 2.6;
+    // 카메라 거리: 처음에는 뇌 전체가 여유 있게 보이도록 멀리서 시작한다 (세로 화면이면 더 멀리)
+    this.distMin = 1.2; this.distMax = 7;
+    const asp = innerWidth / Math.max(innerHeight, 1);
+    this.dist = Math.min(this.distMax, asp >= 1 ? 3.6 : 3.6 / Math.max(asp, 0.45) * 0.8);
+    this.onZoom = null;              // 휠·핀치로 거리가 바뀌면 알린다 (확대 막대 동기화)
     this.autoRotate = true;
 
     const gl = canvas.getContext('webgl', { antialias: false, alpha: false });
@@ -138,13 +142,32 @@ export class BrainRenderer {
     c.addEventListener('mousedown', e => down(e.clientX, e.clientY));
     addEventListener('mousemove', e => move(e.clientX, e.clientY));
     addEventListener('mouseup', () => drag = false);
-    c.addEventListener('touchstart', e => { const t = e.touches[0]; down(t.clientX, t.clientY); }, { passive: true });
-    c.addEventListener('touchmove', e => { const t = e.touches[0]; move(t.clientX, t.clientY); }, { passive: true });
-    c.addEventListener('touchend', () => drag = false);
+    // 손가락 하나 = 회전, 두 개 = 핀치 확대·축소
+    let pinch = 0;
+    const span = ts => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+    c.addEventListener('touchstart', e => {
+      if (e.touches.length === 2) { drag = false; pinch = span(e.touches); return; }
+      const t = e.touches[0]; down(t.clientX, t.clientY);
+    }, { passive: true });
+    c.addEventListener('touchmove', e => {
+      if (e.touches.length === 2 && pinch) {
+        const s = span(e.touches);
+        this.setDist(this.dist * pinch / Math.max(s, 1));
+        pinch = s;
+        return;
+      }
+      const t = e.touches[0]; move(t.clientX, t.clientY);
+    }, { passive: true });
+    c.addEventListener('touchend', e => { drag = false; if (e.touches.length < 2) pinch = 0; });
     c.addEventListener('wheel', e => {
       e.preventDefault();
-      this.dist = Math.max(1.2, Math.min(6, this.dist * (1 + e.deltaY * 0.001)));
+      this.setDist(this.dist * (1 + e.deltaY * 0.001));
     }, { passive: false });
+  }
+
+  setDist(d, silent) {
+    this.dist = Math.max(this.distMin, Math.min(this.distMax, d));
+    if (!silent) this.onZoom?.(this.dist);
   }
 
   _resize() {

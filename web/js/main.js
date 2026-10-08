@@ -216,6 +216,16 @@ async function main() {
       send({ running });
     };
     $('reset').onclick = () => worker.postMessage({ type: 'reset' });
+    // ── 확대·축소 막대: 0 = 가장 멀리, 100 = 가장 가까이 (거리는 로그 눈금) ──
+    const zoomBar = $('zoom-bar');
+    const distToBar = d => Math.round(100 * Math.log(renderer.distMax / d) / Math.log(renderer.distMax / renderer.distMin));
+    const barToDist = v => renderer.distMax * Math.pow(renderer.distMin / renderer.distMax, v / 100);
+    zoomBar.value = distToBar(renderer.dist);
+    zoomBar.oninput = () => renderer.setDist(barToDist(+zoomBar.value), true);
+    renderer.onZoom = d => { zoomBar.value = distToBar(d); };
+    const nudge = k => { renderer.setDist(renderer.dist * k); };
+    $('zoom-in').onclick = () => nudge(0.85);
+    $('zoom-out').onclick = () => nudge(1 / 0.85);
     $('rotate').onclick = () => {
       renderer.autoRotate = !renderer.autoRotate;
       $('rotate').classList.toggle('on', renderer.autoRotate);
