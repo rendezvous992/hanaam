@@ -10,11 +10,16 @@
 <body>
 <canvas id="brain"></canvas>
 
-<div id="loading">초기화 중…</div>
+<div id="loading" role="status" aria-live="polite">
+  <b>가상 초파리 뇌</b>
+  <div class="bar"><i id="loading-bar"></i></div>
+  <span id="loading-step">준비 중…</span>
+</div>
 
 <header>
   <h1>가상 초파리 뇌</h1>
   <p><span class="nb">실제 초파리 커넥톰(FlyWire v783)<span class="sep">·</span></span> <span class="nb">뉴런 139,255개<span class="sep">·</span></span> <span class="nb">시냅스 연결 270만 쌍<span class="sep">·</span></span> <span class="nb">실시간 스파이킹 시뮬레이션</span></p>
+  <p class="live" id="live" aria-live="off">0.00 s · 0 스파이크/초 · 활성 뉴런 0</p>
 </header>
 
 <div id="zoom" role="group" aria-label="뇌 확대·축소">
@@ -24,7 +29,7 @@
 </div>
 
 <div id="fly-stage">
-  <div id="fly-head"><span id="fly-sub">행동 (뇌 → 몸)</span><b id="fly-caption">대기 🪰</b></div>
+  <div id="fly-head"><span id="fly-sub">행동 (뇌 → 몸)</span><b id="fly-caption">대기</b></div>
   <div id="fly-svg"></div>
 </div>
 
@@ -34,11 +39,11 @@
     <figure><canvas id="lab-screen" width="160" height="120"></canvas><figcaption>화면 → 광수용체</figcaption></figure>
     <figure><canvas id="lab-seen" width="160" height="120"></canvas><figcaption>뇌가 본 화면 (시각 뉴런)</figcaption></figure>
   </div>
-  <div id="lab-channels" class="row">
-    <button data-ch="stripes" class="on">흐르는 줄무늬</button>
-    <button data-ch="loom">다가오는 원</button>
-    <button data-ch="flicker">깜빡임</button>
-    <button data-ch="stars">반딧불</button>
+  <div id="lab-channels" role="group" aria-label="TV 채널">
+    <button data-ch="stripes" class="on" title="흐르는 줄무늬 (광운동 반응)">줄무늬</button>
+    <button data-ch="loom" title="다가오는 원 (천적 접근)">다가오는 원</button>
+    <button data-ch="flicker" title="화면 전체가 깜빡임">깜빡임</button>
+    <button data-ch="stars" title="반딧불처럼 깜빡이는 점">반딧불</button>
   </div>
   <p class="hint" id="lab-note"></p>
 </div>
@@ -74,9 +79,9 @@
         <p id="omok-status" class="info"></p>
         <div class="row row3">
           <button id="omok-match">대결</button>
-          <button id="omok-train">조련 ×10판</button>
+          <button id="omok-train">10판 조련</button>
           <button id="omok-forever">무한 조련</button>
-          <button id="omok-human">나 vs 흑</button>
+          <button id="omok-human">직접 두기</button>
           <button id="omok-stop">멈춤</button>
         </div>
         <div class="new-fly">
@@ -84,7 +89,7 @@
           <button id="new-fly">새 초파리</button>
         </div>
         <p id="omok-save" class="hint save-line"></p>
-        <button id="omok-reset" class="reset-btn" hidden>지금 두 뇌 초기화</button>
+        <button id="omok-reset" class="reset-btn" hidden>두 뇌 초기화</button>
       </section>
       <section class="fly-card">
         <h3><span id="omok-name-B">초파리 B</span> · <span id="omok-side-B">백</span></h3>
@@ -108,18 +113,22 @@
   <section>
     <h2>실험실</h2>
     <p class="hint">초파리 눈(광수용체 8,456개)에 화면을 보여주고, 수용장을 측정한 시각 뉴런으로 뇌가 본 것을 읽습니다.</p>
+    <p class="sub">한 마리 실험</p>
     <div class="row">
       <button id="lab-tv">TV 보여주기</button>
-      <button id="lab-pong">탁구</button>
-      <button id="lab-omok">오목 대결</button>
-      <button id="lab-pongduel">탁구 대결</button>
+      <button id="lab-pong">탁구 연습</button>
+    </div>
+    <p class="sub">두 마리 대결 (경기장)</p>
+    <div class="row">
+      <button id="lab-omok">오목 대결<svg class="go" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 5h5.5M5 2.5 7.5 5 5 7.5"/></svg></button>
+      <button id="lab-pongduel">탁구 대결<svg class="go" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 5h5.5M5 2.5 7.5 5 5 7.5"/></svg></button>
     </div>
   </section>
 
   <section>
     <h2>행동 제어</h2>
-    <p class="hint">명령 뉴런을 <b>꾹 누르고 있는 동안</b> 광유전학처럼 강제 자극합니다.
-      전진(DNp09)·후진(MDN)·점프(Giant Fiber)는 실제 논문에서 동정된 명령 뉴런입니다.</p>
+    <p class="hint">버튼을 <b>누르고 있는 동안</b> 해당 명령 뉴런을 광유전학처럼 강제로 자극합니다.
+      전진(DNp09)·뒷걸음(MDN)·점프(Giant Fiber)는 논문에서 확인된 명령 뉴런이고, 주둥이 뻗기는 주둥이 운동뉴런을 직접 자극합니다.</p>
     <div id="commands"></div>
   </section>
 
@@ -133,9 +142,9 @@
   </section>
 
   <section>
-    <h2>에탄올 · 니코틴</h2>
-    <p class="hint">장난스러운 근사 모델: 에탄올은 저용량에서 들뜸, 고용량에서 억제 강화·진정.
-      니코틴은 초파리 뇌의 주 흥분성 전달물질인 아세틸콜린(ACh) 시냅스를 증폭합니다.</p>
+    <h2>에탄올·니코틴</h2>
+    <p class="hint">단순화한 근사 모델입니다. 에탄올은 저용량에서 흥분을, 고용량에서 억제를 강화해 진정을 일으킵니다.
+      니코틴은 초파리 뇌의 주된 흥분성 전달물질인 아세틸콜린(ACh) 시냅스를 증폭합니다.</p>
     <label>에탄올 <span id="ethanol-val">맨정신</span>
       <input id="ethanol" type="range" min="0" max="100" value="0">
     </label>
@@ -147,8 +156,8 @@
   <section>
     <h2>시뮬레이션</h2>
     <div class="row">
-      <button id="pause">일시정지</button>
-      <button id="reset">리셋</button>
+      <button id="pause" aria-pressed="false">일시정지</button>
+      <button id="reset">초기화</button>
       <button id="rotate" class="on">자동 회전</button>
       <button id="skel" class="on" title="뉴런 131개의 실제 가지 모양을 선으로 겹쳐 그립니다">뉴런 모양</button>
     </div>
@@ -156,17 +165,18 @@
       <input id="speed" type="range" min="1" max="20" value="6">
     </label>
     <div class="stats">
-      <div><b id="stat-time">0.00 s</b><span>시뮬레이션 시간</span></div>
+      <div><b id="stat-time">0.00 s</b><span>모의 시간</span></div>
       <div><b id="stat-rate">0</b><span>스파이크/초</span></div>
       <div><b id="stat-active">0</b><span>활성 뉴런</span></div>
     </div>
-    <canvas id="spark" width="240" height="48"></canvas>
+    <canvas id="spark" width="266" height="60" aria-label="최근 전뇌 스파이크 수 추이"></canvas>
   </section>
 
   <footer>
     데이터: <a href="https://codex.flywire.ai" target="_blank" rel="noopener">FlyWire Connectome v783</a>
     (Dorkenwald et al. 2024; Schlegel et al. 2024) ·
-    모델: LIF, Shiu et al. 2024 단순화 · 드래그로 회전, 휠로 확대
+    모델: Shiu et al. 2024의 LIF 모델을 단순화 ·
+    <span id="hint-input">드래그로 회전, 휠이나 확대 막대로 확대</span>
   </footer>
 </aside>
 

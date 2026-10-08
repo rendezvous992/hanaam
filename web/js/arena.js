@@ -17,7 +17,7 @@
 import { loadWiring } from './data.js';
 import { FlyEye, SCREEN_W, SCREEN_H } from './vision.js';
 import { BrainStore } from './brain-store.js';
-import { PongDuel } from './pong-duel.js';
+import { PongDuel, TABLE_W } from './pong-duel.js';
 
 const N = 9;
 const REGION = [0.15, 0.15, 0.85, 0.85];
@@ -38,6 +38,20 @@ export function winner(board) {
     }
   }
   return board.every(v => v) ? 3 : 0;
+}
+
+// 화면용: 5목이 났으면 그 줄의 [첫 칸, 끝 칸], 아니면 null (winner와 같은 순서로 찾는다)
+function winLine(board) {
+  for (let c = 0; c < N * N; c++) {
+    const p = board[c]; if (!p) continue;
+    const x = c % N, y = (c / N) | 0;
+    for (const [dx, dy] of DIRS) {
+      let k = 1;
+      while (k < 5 && inB(x + dx * k, y + dy * k) && board[(y + dy * k) * N + x + dx * k] === p) k++;
+      if (k === 5) return [c, (y + dy * 4) * N + x + dx * 4];
+    }
+  }
+  return null;
 }
 
 // 칸 c를 지나는 p의 가장 긴 연속과 열린 끝 수
@@ -77,9 +91,9 @@ export function trainerReward(before, c, me) {
   const asOpp = before.slice(); asOpp[c] = opp;
   const block = runInfo(asOpp, c, opp);
   if (own.run >= 5) return [1, '5목 완성'];
-  if (myWins.length) return [-0.8, '이길 수를 놓침'];
-  if (oppWins.length && !oppWins.includes(c)) return [-0.8, '상대 5목을 못 막음'];
-  if (block.run >= 5) return [0.9, '상대 5목 저지'];
+  if (myWins.length) return [-0.8, '이길 수 놓침'];
+  if (oppWins.length && !oppWins.includes(c)) return [-0.8, '상대 5목 못 막음'];
+  if (block.run >= 5) return [0.9, '상대 5목 막기'];
   if (own.run === 4 && own.open) return [own.open === 2 ? 0.85 : 0.6, own.open === 2 ? '열린 4' : '4 만들기'];
   if (block.run === 4 && block.open) return [0.6, '상대 4 막기'];
   if (own.run === 3 && own.open === 2) return [0.45, '열린 3'];
@@ -162,7 +176,7 @@ class FlyPlayer {
     this.pong = { w: 0, l: 0, trained: 0, hits: '', ...m.pong };
     this.synChanged = m.synChanged || 0;
     this.rAvg = 0;                 // 평소 받던 보상(지수평균) — 보상 예측 오차의 기준
-    this.lastSeen = null; this.lastMove = -1; this.pongSeen = null;
+    this.lastSeen = null; this.lastMove = -1; this.lastBoard = null; this.pongSeen = null;
     this.dirty = false;
   }
 
@@ -215,6 +229,7 @@ class FlyPlayer {
       for (let c = 0; c < N * N; c++) if (p[c]) { x -= p[c]; if (x <= 0) { best = c; break; } }
     }
     this.lastSeen = act; this.lastMove = best;
+    this.lastBoard = board.slice(); this.lastMe = me;     // '본 판' 그림에 돌 자리 표시용
     return best;
   }
 
@@ -240,8 +255,8 @@ class FlyPlayer {
 }
 
 const HINT = {
-  omok: '두 자리 모두 실제 연결체 뇌(뉴런 139,255개)입니다. 판을 20ms 보여주면 <b>그 뇌의 시각 뉴런이 가장 강하게 반응한 빈 칸</b>에 둡니다. 규칙·점수표·선생님은 없고, 5목 판정은 심판만 합니다. <b>조련</b>에서는 수가 놓일 때마다 조련사가 결과만 보고 칭찬(설탕 + 보상 도파민)이나 꾸지람(쓴맛 + 처벌 도파민)을 주고, 그 수를 고르게 만든 시냅스만 강화·약화됩니다. 대결은 학습 없이 실력만 겨룹니다. 위 선택 상자로 자리에 앉힐 초파리를 바꾸거나 새 초파리를 만들 수 있습니다.',
-  pong: '두 초파리가 마주 보고 탁구를 칩니다. 게임 시간 0.1초마다 각자의 눈에 <b>공과 자기 라켓만</b> 20ms 보여주고, 시각 뉴런이 공을 가장 강하게 본 위치로 라켓이 갑니다(정위 반응, 학습된 디코더 없음). <b>조련</b>에서는 공이 올 때마다 조련사가 떨어질 곳으로 다가갔는지만 보고 칭찬·꾸지람, 받아내면 설탕 + 보상 도파민, 놓치면 쓴맛 + 처벌 도파민을 주고, 그 움직임을 만든 시냅스만 바뀝니다. <b>나 vs 아래</b>에서는 탁구대 위에서 마우스나 손가락으로 위쪽 라켓을 움직입니다.',
+  omok: '두 자리 모두 실제 커넥톰 뇌(뉴런 139,255개)입니다. 판을 20ms 보여 주고 <b>시각 뉴런이 가장 강하게 반응한 빈 칸</b>에 돌을 놓습니다. 수를 고르는 규칙은 없고, 심판은 5목만 판정합니다. <b>조련</b>은 수마다 결과를 보고 칭찬(단맛 + 보상 도파민)이나 꾸지람(쓴맛 + 처벌 도파민)을 주어, 그 수를 고르게 만든 시냅스만 바꿉니다. <b>대결</b>은 학습 없이 실력만 겨룹니다.',
+  pong: '두 초파리가 마주 보고 탁구를 칩니다. 게임 시간 0.1초마다 각자의 눈에 <b>공과 자기 라켓만</b> 20ms 보여 주고, 시각 뉴런이 공을 가장 강하게 본 쪽으로 라켓을 옮깁니다(정위 반응, 학습된 디코더 없음). <b>조련</b>은 공이 올 때마다 떨어질 곳으로 다가갔는지 보고 칭찬·꾸지람을 주고, 받아내면 단맛 + 보상 도파민, 놓치면 쓴맛 + 처벌 도파민을 줍니다. <b>직접 치기</b>에서는 탁구대 위로 마우스나 손가락을 움직여 위쪽 라켓을 조종합니다.',
 };
 const CAP = {
   omok: '{n}가 본 판<br>밝을수록 뇌 반응이 강함<br>파란 테두리 = 고른 칸',
@@ -254,9 +269,81 @@ function josa(name, a, b) {
   return name + ('013678'.includes(c) ? a : b);
 }
 
+// 메인 패널과 같은 말로 취기를 표시한다
+const ethanolWord = v => v === 0 ? '맨정신' : v < 0.3 ? '알딸딸' : v < 0.6 ? '취함' : v < 0.85 ? '만취' : '인사불성';
+
 const EXPLORE_K = 4;
 
 const AUTOSAVE = { omok: 10, pong: 20 };       // 무한 조련 중 이만큼마다 저장 (판 / 점)
+
+// 캔버스 해상도를 화면에 보이는 크기 × 기기 픽셀 비율에 맞춘다(흐릿하지 않게).
+// 돌려주는 값 u = CSS 1px의 캔버스 픽셀 수. 숨겨져 크기를 모르면 지금 해상도를 기준 폭 base로 나눈 값.
+function fitCanvas(cv, base) {
+  const cw = cv.clientWidth, ch = cv.clientHeight;
+  if (!cw || !ch) return cv.width / base;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const w = Math.round(cw * dpr), h = Math.round(ch * dpr);
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  return w / cw;
+}
+
+// ── 오목판 그림 ──
+// 판 가장자리 여백(칸 단위)과 칸 크기. 바깥 줄의 돌이 판 끝에 붙지 않게 여백을 둔다.
+const BOARD_M = 0.62;
+const boardGeom = W => { const s = W / (N - 1 + 2 * BOARD_M); return { s, P: i => Math.round((BOARD_M + i) * s) }; };
+const STAR = [[2, 2], [6, 2], [2, 6], [6, 6], [4, 4]];            // 9줄 판의 화점
+
+// 비자나무 판 무늬: 한 번만 그려 두고 다시 쓴다(고정 난수라 늘 같은 결)
+function woodTexture(W) {
+  const c = document.createElement('canvas'); c.width = c.height = W;
+  const g = c.getContext('2d'), u = W / 360;
+  let seed = 7;
+  const r = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const base = g.createLinearGradient(0, 0, W, W);
+  base.addColorStop(0, '#d6b07a'); base.addColorStop(0.5, '#cfa66c'); base.addColorStop(1, '#c39558');
+  g.fillStyle = base; g.fillRect(0, 0, W, W);
+  for (let i = 0; i < 90; i++) {                                   // 곧은결: 세로로 길게 조금씩 휘는 결
+    const x0 = r() * W, amp = (1 + r() * 3) * u, f = (0.002 + r() * 0.003) / u, ph = r() * 6.28;
+    const dark = r() < 0.7;
+    g.strokeStyle = dark ? `rgba(120,78,36,${(0.04 + r() * 0.08).toFixed(3)})` : `rgba(255,236,200,${(0.03 + r() * 0.05).toFixed(3)})`;
+    g.lineWidth = (0.3 + r() * 1.2) * u;
+    g.beginPath();
+    for (let y = -10; y <= W + 10; y += 4 * u) {
+      const x = x0 + Math.sin(y * f + ph) * amp + Math.sin(y * f * 3.1 + ph) * amp * 0.25;
+      y < 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  const v = g.createRadialGradient(W / 2, W / 2, W * 0.3, W / 2, W / 2, W * 0.75);
+  v.addColorStop(0, 'rgba(60,35,10,0)'); v.addColorStop(1, 'rgba(60,35,10,0.16)');
+  g.fillStyle = v; g.fillRect(0, 0, W, W);
+  return c;
+}
+
+// 바둑돌: 흑은 무광 점판암, 백은 조개(아주 옅은 결). 위에서 비치는 빛과 판 위의 부드러운 그림자.
+function drawStone(g, x, y, r, black, u, alpha = 1) {
+  g.save();
+  g.globalAlpha = alpha;
+  if (alpha === 1) { g.shadowColor = 'rgba(30,18,6,0.45)'; g.shadowBlur = r * 0.22; g.shadowOffsetX = r * 0.08; g.shadowOffsetY = r * 0.14; }
+  const grd = g.createRadialGradient(x - r * 0.32, y - r * 0.38, r * 0.05, x, y, r);
+  if (black) { grd.addColorStop(0, '#55575c'); grd.addColorStop(0.3, '#2b2c30'); grd.addColorStop(1, '#0d0d0f'); }
+  else { grd.addColorStop(0, '#fbfaf6'); grd.addColorStop(0.55, '#eeebe3'); grd.addColorStop(1, '#cdc8bc'); }
+  g.fillStyle = grd; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  g.shadowColor = 'transparent';
+  if (black) {
+    const hl = g.createRadialGradient(x - r * 0.35, y - r * 0.42, 0, x - r * 0.35, y - r * 0.42, r * 0.45);
+    hl.addColorStop(0, 'rgba(255,255,255,0.16)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = hl; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  } else {
+    g.save(); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.clip();
+    g.strokeStyle = 'rgba(150,140,120,0.045)'; g.lineWidth = 0.5 * u;
+    for (let k = 1; k <= 3; k++) { g.beginPath(); g.arc(x - r * 0.1, y + r * 1.6, r * (1.0 + k * 0.28), 0, Math.PI * 2); g.stroke(); }
+    g.restore();
+    g.strokeStyle = 'rgba(90,80,60,0.25)'; g.lineWidth = 0.5 * u;
+    g.beginPath(); g.arc(x, y, r - 0.25 * u, 0, Math.PI * 2); g.stroke();
+  }
+  g.restore();
+}
 
 // ── 경기장 UI ────────────────────────────────────────
 export class OmokArena {
@@ -294,10 +381,13 @@ export class OmokArena {
     }
     this.boardCv.onclick = e => this.click(e);
     this.boardCv.onpointermove = e => {
+      if (this.game === 'omok') { this.hoverAt(e); return; }
       if (!this.pong) return;
-      const r = this.boardCv.getBoundingClientRect();
-      this.pong.humanX = Math.max(0, Math.min(1, (e.clientX - r.left - r.width * 0.2) / (r.width * 0.6)));   // 탁구대는 가운데 60% 폭
+      const r = this.boardCv.getBoundingClientRect(), x0 = (1 - TABLE_W) / 2;   // 탁구대는 가운데 TABLE_W 폭
+      this.pong.humanX = Math.max(0, Math.min(1, (e.clientX - r.left - r.width * x0) / (r.width * TABLE_W)));
     };
+    this.boardCv.onpointerleave = () => { if (this.hover >= 0) { this.hover = -1; if (this.game === 'omok') this.drawBoard(); } };
+    this.hover = -1;
   }
 
   say(t) { document.getElementById('omok-status').textContent = t; }
@@ -307,7 +397,7 @@ export class OmokArena {
     this.onOpen?.();
     if (!this.flies) {
       this.busy = true;
-      this.say('뇌 두 개를 준비하는 중… (연결체 데이터를 두 벌 더 불러옵니다)');
+      this.say('두 뇌를 준비하는 중… (커넥톰 데이터를 두 벌 더 불러옵니다)');
       const [wa, wb] = await Promise.all([loadWiring(), loadWiring()]);
       this.flies = { A: new FlyPlayer('A', this.vis, this.n, wa, this.rewardIdx), B: new FlyPlayer('B', this.vis, this.n, wb, this.rewardIdx) };
       this.pong = new PongDuel(this);
@@ -315,20 +405,19 @@ export class OmokArena {
         document.getElementById(`omok-eth-${k}`).oninput = e => {
           const v = +e.target.value / 100;
           this.flies[k].setEthanol(v);
-          document.getElementById(`omok-eth-${k}-val`).textContent = v ? `${(v * 0.4).toFixed(2)} g/dL` : '맨정신';
+          document.getElementById(`omok-eth-${k}-val`).textContent = v ? `${ethanolWord(v)} · ${(v * 0.4).toFixed(2)} g/dL` : '맨정신';
         };
       }
       this.setGame(game, true);
       this.board.fill(0); this.drawBoard(); this.updateCards();
       this.idleLook();
-      this.say('공유 저장소에서 훈련된 초파리를 찾는 중…');
+      this.say('공유 저장소에서 저장된 초파리를 찾는 중…');
       const found = await this.loadShared();
       this.busy = false;
       this.updateCards(); this.showSave();
-      const { A, B } = this.flies;
       this.say(found
-        ? `저장된 뇌를 이어받았습니다 (${A.name} 오목 ${A.trained}판·탁구 ${A.pong.trained}점 / ${B.name} 오목 ${B.trained}판·탁구 ${B.pong.trained}점). 조련으로 더 가르치거나 대결시켜 보세요.`
-        : '준비 완료. 두 뇌는 똑같은 연결체로 시작합니다. 조련으로 가르친 뒤 대결로 붙여 보세요.');
+        ? '저장된 뇌를 이어받았습니다. 조련으로 더 가르치거나 대결을 붙여 보세요.'
+        : '준비 완료. 두 뇌 모두 원래 커넥톰 그대로입니다. 조련으로 가르친 뒤 대결을 붙여 보세요.');
     } else {
       for (const f of Object.values(this.flies)) f.setRunning(true);
       this.setGame(game);
@@ -355,7 +444,8 @@ export class OmokArena {
 
   setGame(game, force) {
     if (!force && game === this.game) return;
-    if (!force && this.busy) { this.say('진행 중인 경기·훈련을 멈춘 뒤 바꿔 주세요.'); return; }
+    if (!force && this.busy) { this.say('진행 중인 대결·조련을 멈춘 뒤 바꿔 주세요.'); return; }
+    if (this.human) this.say('');                     // 끝나지 않은 사람 대국의 '내 차례' 안내를 지운다
     this.game = game; this.human = false;
     const $ = id => document.getElementById(id), pong = game === 'pong';
     $('arena-tab-omok').classList.toggle('on', !pong);
@@ -363,8 +453,8 @@ export class OmokArena {
     $('arena-title').textContent = pong ? '초파리 탁구 대결' : '초파리 오목 대결';
     $('arena-hint').innerHTML = HINT[game];
     $('omok-match').textContent = pong ? '대결 (5점)' : '대결';
-    $('omok-train').textContent = pong ? '조련 ×10점' : '조련 ×10판';
-    $('omok-human').textContent = pong ? '나 vs 아래' : '나 vs 흑';
+    $('omok-train').textContent = pong ? '10점 조련' : '10판 조련';
+    $('omok-human').textContent = pong ? '직접 치기' : '직접 두기';
     if (pong && this.pong) this.pong.reset();
     else { this.board.fill(0); this.lastMove = -1; this.drawBoard(); }
     if (this.flies) this.updateCards();
@@ -412,7 +502,7 @@ export class OmokArena {
   }
 
   async seat(k, id) {
-    if (this.busy) { this.fillPickers(); this.say('진행 중인 경기·훈련을 멈춘 뒤 바꿔 주세요.'); return; }
+    if (this.busy) { this.fillPickers(); this.say('진행 중인 대결·조련을 멈춘 뒤 바꿔 주세요.'); return; }
     const other = k === 'A' ? 'B' : 'A';
     if (this.flies[k].id === id) return;
     this.busy = true;
@@ -453,17 +543,17 @@ export class OmokArena {
     await this.seat('B', id);
     this.flies.B.dirty = true;
     await this.save(false);
-    this.say(`🐣 새 초파리 "${name}"${josa(name, '이', '가').slice(name.length)} 태어났습니다 — 원래 연결체 그대로입니다. ${this.sideName('B')} 자리에 앉혔어요.`);
+    this.say(`🐣 새 초파리 "${name}"${josa(name, '이', '가').slice(name.length)} 태어났습니다. 원래 커넥톰 그대로이며 ${this.sideName('B')} 자리에 앉았습니다.`);
   }
 
-  // 🗑 두 번 눌러야 지금 자리에 앉은 초파리를 명단과 공유 저장소에서 지운다.
+  // 두 번 눌러야 지금 자리에 앉은 초파리를 명단과 공유 저장소에서 지운다.
   //   빈 자리에는 명단의 다른 초파리가(없으면 새로 태어난 초파리가) 앉는다.
   async deleteFly(k) {
     if (this.busy || !this.flies) return;
     const btn = document.getElementById(`del-${k}`), f = this.flies[k];
     if (this.delArmed !== k) {
       this.delArmed = k; btn.classList.add('armed'); btn.textContent = '정말 삭제';
-      this.say(`🗑 한 번 더 누르면 "${f.name}"의 뇌와 기록이 영구히 지워집니다.`);
+      this.say(`한 번 더 누르면 "${f.name}"의 뇌와 기록이 영구히 지워집니다.`);
       clearTimeout(this.delTimer);
       this.delTimer = setTimeout(() => { this.delArmed = null; btn.classList.remove('armed'); btn.textContent = '삭제'; }, 3000);
       return;
@@ -482,7 +572,7 @@ export class OmokArena {
     if (born) await this.save(false);
     this.fillPickers(); this.updateCards(); this.showSave();
     if (this.game === 'pong') this.pong.reset(); else { this.board.fill(0); this.lastMove = -1; this.drawBoard(); }
-    this.say(`🗑 "${name}"${josa(name, '을', '를').slice(name.length)} ${shared ? '삭제했습니다' : '이 창의 명단에서 지웠습니다(공유 저장소에는 남아 있음)'}. ${this.sideName(k)} 자리에는 ${born ? '새로 태어난 ' : ''}${josa(this.flies[k].name, '이', '가')} 앉았습니다.`);
+    this.say(`"${name}"${josa(name, '을', '를').slice(name.length)} ${shared ? '삭제했습니다' : this.store.state === 'readonly' ? '이 창의 명단에서만 지웠습니다(공유 저장소의 저장본은 그대로입니다)' : '이 창의 명단에서 지웠습니다'}. ${this.sideName(k)} 자리에는 ${born ? '새로 태어난 ' : ''}${josa(this.flies[k].name, '이', '가')} 앉았습니다.`);
   }
 
   sideName(k) { return this.game === 'pong' ? (k === 'A' ? '아래' : '위') : (k === 'A' ? '흑' : '백'); }
@@ -495,7 +585,7 @@ export class OmokArena {
       for (const m of list) {
         const o = document.createElement('option');
         o.value = m.id;
-        o.textContent = `${m.name || '초파리 ' + m.id} · 오목 ${m.trained || 0}판 · 탁구 ${m.pong?.trained || 0}점`;
+        o.textContent = `${m.name || '초파리 ' + m.id} — 오목 ${m.trained || 0}판 · 탁구 ${m.pong?.trained || 0}점`;
         sel.append(o);
       }
       sel.value = this.flies[k].id;
@@ -523,7 +613,7 @@ export class OmokArena {
         const k = me === 1 ? 'A' : 'B';
         const rate = done ? ` · 분당 ${(done / ((performance.now() - t0) / 60000)).toFixed(1)}판` : '';
         const head = forever ? `무한 조련 ${gi + 1}판째${rate} · ` : train ? `조련 ${gi + 1}/${games} · ` : '';
-        this.say(`${head}${this.flies[k].name}(${me === 1 ? '흑' : '백'}) 차례 — 판을 보는 중… (${moves + 1}수)${note}`);
+        this.say(`${head}${this.flies[k].name}(${me === 1 ? '흑' : '백'}) 차례 — 판을 보는 중… (${moves + 1}수째)${note}`);
         const before = this.board.slice();
         const c = await this.flies[k].choose(this.board, me);
         this.board[c] = me; this.lastMove = c; moves++;
@@ -545,14 +635,14 @@ export class OmokArena {
         const f = this.flies[k]; f.trained++;
         f.praise.push(tally[k][1] ? tally[k][0] / tally[k][1] : 0);
       }
-      this.say(`${w === 3 ? '무승부' : `${(w === 1 ? A : B).name}(${w === 1 ? '흑' : '백'}) 승리! 🎉`} (${moves}수)`);
+      this.say(`${w === 3 ? '무승부' : `${(w === 1 ? A : B).name}(${w === 1 ? '흑' : '백'}) 승리! 🎉`} (${moves}수 만에)`);
       this.updateCards();
       if (forever && done % AUTOSAVE.omok === 0) await this.save(true);
       if (delay) await sleep(1200);
     }
     if (train) this.fast(false);
     if (this.stop) this.say(forever ? `무한 조련을 멈췄습니다 — 이번에 ${done}판 가르쳤습니다.` : '멈췄습니다.');
-    else if (train) this.say(`조련 ${games}판 끝. 카드의 발전 그래프가 오르는지 보세요. 대결은 학습 없이 실력만 겨룹니다.`);
+    else if (train) this.say(`조련 ${games}판을 마쳤습니다. 카드의 발전 그래프가 오르는지 확인해 보세요.`);
     this.busy = false;
     await this.save(train);
   }
@@ -611,7 +701,7 @@ export class OmokArena {
     this.fast(false);
     this.say(this.stop
       ? (forever ? `무한 조련을 멈췄습니다 — 이번에 ${done}판 가르쳤습니다.` : `멈췄습니다 (${done}판 조련).`)
-      : `조련 ${games}판 끝. 카드의 발전 그래프가 오르는지 보세요. 대결은 학습 없이 실력만 겨룹니다.`);
+      : `조련 ${games}판을 마쳤습니다. 카드의 발전 그래프가 오르는지 확인해 보세요.`);
     this.busy = false;
     await this.save(true);
   }
@@ -630,8 +720,8 @@ export class OmokArena {
     const { A, B } = this.flies;
     if (!w) this.say('멈췄습니다.');
     else if (mode === 'match') this.say(`${w === 'A' ? A.name : B.name} 승리! 🎉 (${this.pong.score.A} : ${this.pong.score.B})`);
-    else if (mode === 'human') this.say(w === 'A' ? `${A.name} 승리! 🎉` : '내가 이겼다!');
-    else this.say(`조련 ${points}점 끝. 카드의 '공 받아낸 비율' 그래프가 오르는지 보세요.`);
+    else if (mode === 'human') this.say(w === 'A' ? `${A.name} 승리! 🎉` : '내가 이겼습니다! 🎉');
+    else this.say(`조련 ${points}점을 마쳤습니다. 카드의 '받아낸 비율' 그래프가 오르는지 확인해 보세요.`);
     this.busy = false;
     this.updateCards();
     await this.save(train);
@@ -661,12 +751,12 @@ export class OmokArena {
     const el = document.getElementById('omok-save');
     if (text) { el.textContent = text; return; }
     const st = this.store.state;
-    const when = this.savedAt ? ` · 마지막 저장 ${new Date(this.savedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : '';
+    const when = this.savedAt ? ` · 마지막 저장 ${new Date(this.savedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}` : '';
     el.textContent = st === 'shared'
-      ? `💾 공유 저장소 연결됨 — 초파리마다 뇌와 기록이 자동 저장되고, 링크로 들어온 사람 모두가 이어받습니다${when}`
+      ? `💾 공유 저장소에 자동 저장됩니다 · 링크로 들어온 누구나 이어받을 수 있습니다${when}`
       : st === 'readonly'
-        ? `👀 저장된 초파리를 불러왔습니다 (보기 전용). 여기서 더 가르치거나 새로 만든 초파리는 이 창에서만 유지됩니다${when}`
-        : '💭 공유 저장소를 쓸 수 없어(로그인하지 않았거나 지원하지 않는 화면) 훈련과 새 초파리는 이 창에서만 유지됩니다';
+        ? `👀 저장된 초파리를 불러왔습니다(보기 전용). 여기서 더 가르친 내용과 새로 만든 초파리는 이 창에서만 유지됩니다${when}`
+        : '공유 저장소를 쓸 수 없습니다(로그인하지 않았거나 지원하지 않는 환경). 조련 결과와 새 초파리는 이 창에서만 유지됩니다.';
     if (this.store.lastError) el.textContent += ` · ⚠️ ${this.store.lastError}`;
     document.getElementById('omok-reset').hidden = st !== 'shared';
   }
@@ -677,10 +767,10 @@ export class OmokArena {
     const btn = document.getElementById('omok-reset');
     if (!this.resetArmed) {
       this.resetArmed = true; btn.textContent = '한 번 더 누르면 초기화';
-      setTimeout(() => { this.resetArmed = false; btn.textContent = '지금 두 뇌 초기화'; }, 3000);
+      setTimeout(() => { this.resetArmed = false; btn.textContent = '두 뇌 초기화'; }, 3000);
       return;
     }
-    this.resetArmed = false; btn.textContent = '지금 두 뇌 초기화';
+    this.resetArmed = false; btn.textContent = '두 뇌 초기화';
     this.busy = true;
     for (const f of Object.values(this.flies)) {
       await f.importDiff(null);
@@ -690,7 +780,7 @@ export class OmokArena {
     }
     this.busy = false;
     this.updateCards();
-    this.say(`${this.flies.A.name}·${josa(this.flies.B.name, '을', '를')} 원래 연결체로 되돌렸습니다.`);
+    this.say(`${this.flies.A.name}·${josa(this.flies.B.name, '을', '를')} 원래 커넥톰으로 되돌렸습니다.`);
     await this.save(true);
   }
 
@@ -703,15 +793,14 @@ export class OmokArena {
 
   async click(e) {
     if (this.game !== 'omok' || !this.human || this.busy) return;
-    const r = this.boardCv.getBoundingClientRect(), s = r.width / N;
-    const c = Math.floor((e.clientY - r.top) / s) * N + Math.floor((e.clientX - r.left) / s);
-    if (c < 0 || c >= N * N || this.board[c]) return;
+    const c = this.cellAt(e);
+    if (c < 0 || this.board[c]) return;
     this.board[c] = 1; this.lastMove = c; this.drawBoard();
     let w = winner(this.board);
     const A = this.flies.A;
     if (!w) {
       this.busy = true;
-      this.say(`${A.name}(백)가 판을 보는 중…`);
+      this.say(`${A.name}(백) 차례 — 판을 보는 중…`);
       const m = await A.choose(this.board, 2);
       this.board[m] = 2; this.lastMove = m; this.drawBoard(); this.drawSeen('A');
       this.busy = false;
@@ -721,7 +810,7 @@ export class OmokArena {
     if (w) {
       this.human = false;
       if (w === 2) A.record.w++; else if (w === 1) A.record.l++; else A.record.d++;
-      this.say(w === 3 ? '무승부!' : w === 1 ? '내가 이겼다!' : `${A.name} 승리! 🎉`);
+      this.say(w === 3 ? '무승부!' : w === 1 ? '내가 이겼습니다! 🎉' : `${A.name} 승리! 🎉`);
       this.updateCards();
       this.save(false);
     }
@@ -738,94 +827,159 @@ export class OmokArena {
       const syn = `지금까지 바뀐 시냅스 ${f.synChanged.toLocaleString()}개`;
       if (this.game === 'omok') {
         const r = f.record, p = f.praise, m = Math.min(10, Math.floor(p.length / 2));
-        $(`omok-info-${k}`).textContent = `${r.w}승 ${r.l}패 ${r.d}무 · 누적 조련 ${f.trained}판`;
+        $(`omok-info-${k}`).textContent = `오목 ${r.w}승 ${r.l}패 ${r.d}무 · 누적 조련 ${f.trained}판`;
         $(`omok-pref-${k}`).textContent = !p.length
           ? `아직 오목 조련 전 · ${syn}`
           : p.length < 4
-            ? `칭찬받은 수 ${avg(p)}% · ${syn}`
-            : `칭찬받은 수: 처음 ${m}판 ${avg(p.slice(0, m))}% → 최근 ${m}판 ${avg(p.slice(-m))}% · ${syn}`;
-        this.drawSeries(k, p, 10, '조련하면 발전 곡선이 그려집니다');
+            ? `칭찬 비율 ${avg(p)}% · ${syn}`
+            : `칭찬 비율: 처음 ${m}판 ${avg(p.slice(0, m))}% → 최근 ${m}판 ${avg(p.slice(-m))}% · ${syn}`;
+        this.drawSeries(k, p, 10, '조련하면 발전 그래프가 그려집니다');
         $(`omok-prog-${k}`).title = '조련 판마다 칭찬받은 수의 비율 · 노란 선 = 최근 10판 평균';
       } else {
         const P = f.pong, h = [...P.hits].map(Number), m = Math.min(20, Math.floor(h.length / 2));
         $(`omok-info-${k}`).textContent = `탁구 ${P.w}승 ${P.l}패 · 누적 조련 ${P.trained}점`;
         $(`omok-pref-${k}`).textContent = h.length < 4
           ? `공이 온 횟수 ${h.length}번 · ${syn}`
-          : `공 받아낸 비율: 처음 ${m}번 ${avg(h.slice(0, m))}% → 최근 ${m}번 ${avg(h.slice(-m))}% · ${syn}`;
-        this.drawSeries(k, h, 20, '공을 받아낸 기록이 그려집니다');
+          : `받아낸 비율: 처음 ${m}번 ${avg(h.slice(0, m))}% → 최근 ${m}번 ${avg(h.slice(-m))}% · ${syn}`;
+        this.drawSeries(k, h, 20, '경기를 하면 받아낸 기록이 그려집니다', true);
         $(`omok-prog-${k}`).title = '공이 올 때마다 받아냄(1)/놓침(0) · 노란 선 = 최근 20번 평균';
       }
       this.drawSeen(k);
     }
   }
 
-  // 발전 그래프: 값(점) + 최근 win개 이동 평균(선)
-  drawSeries(k, p, win, empty) {
+  // 발전 그래프: 값(점, 탁구는 받아냄/놓침 눈금) + 최근 win개 이동 평균(선)
+  drawSeries(k, p, win, empty, binary = false) {
     const cv = document.getElementById(`omok-prog-${k}`), g = cv.getContext('2d');
-    const W = cv.width, H = cv.height, u = W / 220;     // 캔버스는 표시 크기의 2배 해상도
+    const u = fitCanvas(cv, 220);
+    const W = cv.width, H = cv.height;
+    const pl = 30 * u, pr = W - 6 * u, pt = 7 * u, pb = H - 7 * u;
     g.fillStyle = '#0b0f19'; g.fillRect(0, 0, W, H);
-    g.strokeStyle = 'rgba(160,178,220,0.12)'; g.lineWidth = u;
-    for (const y of [0.25, 0.5, 0.75]) { g.beginPath(); g.moveTo(0, H * y); g.lineTo(W, H * y); g.stroke(); }
-    g.fillStyle = 'rgba(143,152,174,0.8)'; g.font = `${9 * u}px "IBM Plex Mono", ui-monospace, monospace`;
-    g.textBaseline = 'alphabetic';
-    g.fillText('100%', 3 * u, 10 * u); g.fillText('0%', 3 * u, H - 3 * u);
-    if (!p.length) {
-      g.textAlign = 'center'; g.font = `${10 * u}px "IBM Plex Sans KR", system-ui, sans-serif`;
-      g.fillText(empty, W / 2, H / 2 + 3 * u); g.textAlign = 'left'; return;
+    const y = v => pb - (pb - pt) * v;
+    // 눈금선은 그림 영역 안에만, 글자는 왼쪽 여백에
+    g.strokeStyle = 'rgba(160,178,220,0.10)'; g.lineWidth = u;
+    g.fillStyle = '#626b84'; g.font = `${9.5 * u}px "IBM Plex Mono", ui-monospace, monospace`;
+    g.textAlign = 'right'; g.textBaseline = 'middle';
+    for (const v of p.length ? [0, 0.5, 1] : [0, 1]) {
+      const yy = Math.round(y(v)) + 0.5 * (u % 2);
+      g.beginPath(); g.moveTo(pl, yy); g.lineTo(pr, yy); g.stroke();
+      g.fillText(`${v * 100}%`, pl - 5 * u, yy);
     }
-    const x = i => p.length === 1 ? W / 2 : 28 * u + (W - 32 * u) * i / (p.length - 1), y = v => H - 4 * u - (H - 8 * u) * v;
-    g.fillStyle = 'rgba(140,200,245,0.35)';
-    p.forEach((v, i) => g.fillRect(x(i) - u, y(v) - u, 2 * u, 2 * u));
-    g.strokeStyle = '#f0b64e'; g.lineWidth = 2 * u; g.lineJoin = 'round'; g.beginPath();
-    let s = 0;
-    p.forEach((v, i) => {
-      s += v; if (i >= win) s -= p[i - win];
-      const a = s / Math.min(i + 1, win);
-      i ? g.lineTo(x(i), y(a)) : g.moveTo(x(i), y(a));
-    });
+    if (!p.length) {
+      g.textAlign = 'center'; g.font = `${10.5 * u}px "IBM Plex Sans KR", system-ui, sans-serif`;
+      g.fillText(empty, (pl + pr) / 2, (pt + pb) / 2);
+      g.textAlign = 'left'; g.textBaseline = 'alphabetic'; return;
+    }
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    const x = i => p.length === 1 ? (pl + pr) / 2 : pl + (pr - pl) * i / (p.length - 1);
+    if (binary) {
+      // 받아냄은 위, 놓침은 아래에 가는 눈금 (너무 많으면 생략 — 평균선만)
+      if (p.length <= 300) {
+        g.fillStyle = 'rgba(140,200,245,0.28)';
+        p.forEach((v, i) => g.fillRect(x(i) - 0.5 * u, v ? pt : pb - 3 * u, u, 3 * u));
+      }
+    } else {
+      g.fillStyle = 'rgba(140,200,245,0.45)';
+      p.forEach((v, i) => { g.beginPath(); g.arc(x(i), y(v), 1.2 * u, 0, Math.PI * 2); g.fill(); });
+    }
+    // 이동 평균: 아래로 옅은 채움 + 선 + 끝점
+    const pts = [];
+    let sum = 0;
+    p.forEach((v, i) => { sum += v; if (i >= win) sum -= p[i - win]; pts.push([x(i), y(sum / Math.min(i + 1, win))]); });
+    const fill = g.createLinearGradient(0, pt, 0, pb);
+    fill.addColorStop(0, 'rgba(240,182,78,0.16)'); fill.addColorStop(1, 'rgba(240,182,78,0)');
+    g.fillStyle = fill; g.beginPath(); g.moveTo(pts[0][0], pb);
+    for (const [px, py] of pts) g.lineTo(px, py);
+    g.lineTo(pts[pts.length - 1][0], pb); g.closePath(); g.fill();
+    g.strokeStyle = '#f0b64e'; g.lineWidth = 1.6 * u; g.lineJoin = 'round'; g.beginPath();
+    pts.forEach(([px, py], i) => i ? g.lineTo(px, py) : g.moveTo(px, py));
     g.stroke();
+    const [ex, ey] = pts[pts.length - 1];
+    g.fillStyle = '#f0b64e'; g.beginPath(); g.arc(ex, ey, 2.4 * u, 0, Math.PI * 2); g.fill();
   }
 
   // 초파리가 본 판(오목) / 화면(탁구)
   drawSeen(k) {
     const cv = document.getElementById(`omok-seen-${k}`), g = cv.getContext('2d');
-    if (this.game === 'pong') { this.pong.drawSeen(k, cv); return; }
-    const f = this.flies[k], s = cv.width / N;
-    g.fillStyle = '#0b0f1e'; g.fillRect(0, 0, cv.width, cv.height);
+    if (this.game === 'pong') { fitCanvas(cv, 92); this.pong.drawSeen(k, cv); return; }
+    const u = fitCanvas(cv, 92);
+    const f = this.flies[k], W = cv.width, s = W / N;
+    g.fillStyle = '#0b0f19'; g.fillRect(0, 0, W, cv.height);
+    // 칸 테두리: 반응이 없어도 9×9 판이 읽히게
+    g.strokeStyle = 'rgba(160,178,220,0.07)'; g.lineWidth = 0.5 * u;
+    for (let c = 0; c < N * N; c++) g.strokeRect((c % N) * s + 1 * u, ((c / N) | 0) * s + 1 * u, s - 2 * u, s - 2 * u);
     if (!f.lastSeen) return;
     let mx = 1e-6; for (const x of f.lastSeen) mx = Math.max(mx, x);
     for (let c = 0; c < N * N; c++) {
       const a = Math.sqrt(f.lastSeen[c] / mx);
       g.fillStyle = `rgba(255,${120 + 100 * a | 0},${40 + 40 * a | 0},${a})`;
-      g.fillRect((c % N) * s + 1, ((c / N) | 0) * s + 1, s - 2, s - 2);
+      g.fillRect((c % N) * s + 1 * u, ((c / N) | 0) * s + 1 * u, s - 2 * u, s - 2 * u);
+    }
+    // 돌이 있던 칸(고를 수 없는 칸): 내 돌 = 흰 고리, 상대 돌 = 어두운 점
+    const b = f.lastBoard;
+    if (b) for (let c = 0; c < N * N; c++) {
+      if (!b[c]) continue;
+      const cx = (c % N + 0.5) * s, cy = (((c / N) | 0) + 0.5) * s;
+      g.beginPath();
+      if (b[c] === f.lastMe) { g.strokeStyle = 'rgba(255,255,255,0.45)'; g.lineWidth = 0.8 * u; g.arc(cx, cy, s * 0.22, 0, Math.PI * 2); g.stroke(); }
+      else { g.fillStyle = 'rgba(0,0,0,0.55)'; g.arc(cx, cy, s * 0.14, 0, Math.PI * 2); g.fill(); }
     }
     if (f.lastMove >= 0) {
-      g.strokeStyle = '#7fd7ff'; g.lineWidth = 2;
-      g.strokeRect((f.lastMove % N) * s + 1.5, ((f.lastMove / N) | 0) * s + 1.5, s - 3, s - 3);
+      g.strokeStyle = '#8cc8f5'; g.lineWidth = 1.25 * u;
+      g.strokeRect((f.lastMove % N) * s + 1.2 * u, ((f.lastMove / N) | 0) * s + 1.2 * u, s - 2.4 * u, s - 2.4 * u);
     }
   }
 
   drawBoard() {
-    const g = this.boardCv.getContext('2d'), W = this.boardCv.width, s = W / N, u = W / 360;
-    g.fillStyle = '#c9a063'; g.fillRect(0, 0, W, W);
-    g.strokeStyle = 'rgba(60,40,20,0.7)'; g.lineWidth = u;
-    for (let i = 0; i < N; i++) {
-      g.beginPath(); g.moveTo(s / 2, s / 2 + i * s); g.lineTo(W - s / 2, s / 2 + i * s); g.stroke();
-      g.beginPath(); g.moveTo(s / 2 + i * s, s / 2); g.lineTo(s / 2 + i * s, W - s / 2); g.stroke();
+    const g = this.boardCv.getContext('2d'), W = this.boardCv.width, u = W / 360;
+    const { s, P } = boardGeom(W);
+    if (!this.woodCv || this.woodCv.width !== W) this.woodCv = woodTexture(W);
+    g.drawImage(this.woodCv, 0, 0);
+    // 줄: 안쪽 가는 선, 바깥 테두리는 조금 굵게, 화점
+    g.strokeStyle = 'rgba(42,27,12,0.78)'; g.lineWidth = u;
+    g.beginPath();
+    for (let i = 1; i < N - 1; i++) {
+      g.moveTo(P(0), P(i)); g.lineTo(P(N - 1), P(i));
+      g.moveTo(P(i), P(0)); g.lineTo(P(i), P(N - 1));
     }
-    for (let c = 0; c < N * N; c++) {
-      if (!this.board[c]) continue;
-      const x = (c % N + 0.5) * s, y = (((c / N) | 0) + 0.5) * s;
-      const grd = g.createRadialGradient(x - s * 0.12, y - s * 0.12, 1, x, y, s * 0.42);
-      if (this.board[c] === 1) { grd.addColorStop(0, '#555'); grd.addColorStop(1, '#0a0a0a'); }
-      else { grd.addColorStop(0, '#fff'); grd.addColorStop(1, '#cfcfcf'); }
-      g.fillStyle = grd;
-      g.beginPath(); g.arc(x, y, s * 0.42, 0, Math.PI * 2); g.fill();
-      if (c === this.lastMove) {
-        g.strokeStyle = '#e8442c'; g.lineWidth = 2 * u;
-        g.beginPath(); g.arc(x, y, s * 0.18, 0, Math.PI * 2); g.stroke();
-      }
+    g.stroke();
+    g.lineWidth = 1.8 * u; g.strokeRect(P(0), P(0), P(N - 1) - P(0), P(N - 1) - P(0));
+    g.fillStyle = 'rgba(42,27,12,0.85)';
+    for (const [i, j] of STAR) { g.beginPath(); g.arc(P(i), P(j), 2.6 * u, 0, Math.PI * 2); g.fill(); }
+    // 판 모서리: 빛 받는 쪽의 가는 밝은 선
+    g.strokeStyle = 'rgba(255,240,210,0.22)'; g.lineWidth = u; g.strokeRect(0.5 * u, 0.5 * u, W - u, W - u);
+    // 돌
+    const r = s * 0.46;
+    for (let c = 0; c < N * N; c++) if (this.board[c]) drawStone(g, P(c % N), P((c / N) | 0), r, this.board[c] === 1, u);
+    // 내 차례(사람 대국)일 때 놓을 자리를 옅은 흑돌로 미리 보여 준다
+    if (this.human && !this.busy && this.hover >= 0 && !this.board[this.hover])
+      drawStone(g, P(this.hover % N), P((this.hover / N) | 0), r, true, u, 0.35);
+    // 마지막 수: 돌 색과 대비되는 가는 고리
+    if (this.lastMove >= 0 && this.board[this.lastMove]) {
+      const c = this.lastMove;
+      g.strokeStyle = this.board[c] === 1 ? 'rgba(240,236,228,0.85)' : 'rgba(30,30,30,0.7)'; g.lineWidth = 1.4 * u;
+      g.beginPath(); g.arc(P(c % N), P((c / N) | 0), s * 0.16, 0, Math.PI * 2); g.stroke();
     }
+    // 끝난 판: 5목 줄을 한 번만 강조색으로
+    const wl = winLine(this.board);
+    if (wl) {
+      g.save();
+      g.strokeStyle = 'rgba(240,182,78,0.9)'; g.lineWidth = 2 * u; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(P(wl[0] % N), P((wl[0] / N) | 0)); g.lineTo(P(wl[1] % N), P((wl[1] / N) | 0)); g.stroke();
+      g.restore();
+    }
+  }
+
+  // 판 위 포인터 → 가장 가까운 교차점(판 밖이면 -1)
+  cellAt(e) {
+    const cv = this.boardCv, r = cv.getBoundingClientRect(), k = cv.width / r.width, { s } = boardGeom(cv.width);
+    const i = Math.round((e.clientX - r.left) * k / s - BOARD_M), j = Math.round((e.clientY - r.top) * k / s - BOARD_M);
+    return i < 0 || j < 0 || i >= N || j >= N ? -1 : j * N + i;
+  }
+
+  hoverAt(e) {
+    const c = this.human && !this.busy ? this.cellAt(e) : -1;
+    if (c !== this.hover) { this.hover = c; this.drawBoard(); }
   }
 
   // 두 뇌의 활동을 위에서 내려다본 점그림으로 (+ 탁구면 탁구대)
@@ -833,15 +987,19 @@ export class OmokArena {
     const draw = k => {
       const f = this.flies?.[k], cv = document.getElementById(`omok-brain-${k}`);
       if (!f || !f.glow) return;
-      const g = cv.getContext('2d'), W = cv.width, H = cv.height;
-      const img = g.createImageData(W, H), d = img.data, P = this.positions;
-      for (let i = 0; i < d.length; i += 4) { d[i] = 6; d[i + 1] = 9; d[i + 2] = 20; d[i + 3] = 255; }
-      for (let i = 0; i < this.n; i += 5) {
+      // 2배 해상도(표시 약 300×180 CSS px)에 뉴런 절반을 찍는다 — 덩어리진 네모 대신 고운 점
+      if (cv.width !== 440) { cv.width = 440; cv.height = 260; }
+      const g = cv.getContext('2d'), W = cv.width, H = cv.height, P = this.positions;
+      const bi = this.brainImg || (this.brainImg = {});
+      if (!bi[k]) { const img = g.createImageData(W, H); bi[k] = { img, u32: new Uint32Array(img.data.buffer) }; }
+      const { img, u32 } = bi[k], d = img.data;
+      u32.fill(0xFF140906);                       // 바탕 rgb(6,9,20), 불투명
+      for (let i = 0; i < this.n; i += 2) {
         const x = (P[i * 3] / 65535 * (W - 1)) | 0, y = (P[i * 3 + 1] / 65535 * (H - 1)) | 0;
         const q = (y * W + x) * 4, gl = f.glow[i];
-        d[q] = Math.min(255, d[q] + 18 + gl);
-        d[q + 1] = Math.min(255, d[q + 1] + 22 + gl * 0.8);
-        d[q + 2] = Math.min(255, d[q + 2] + 40 + gl * 0.3);
+        d[q] = Math.min(255, d[q] + 11 + gl);
+        d[q + 1] = Math.min(255, d[q + 1] + 13 + gl * 0.8);
+        d[q + 2] = Math.min(255, d[q + 2] + 24 + gl * 0.3);
       }
       g.putImageData(img, 0, 0);
     };
