@@ -40,6 +40,7 @@ let ethanol = 0;                // 0..1
 let nicotine = 0;               // 0..1 — 니코틴성 ACh 수용체 작용제 근사: 흥분성 시냅스 증폭
 let ticksPerFrame = 6;
 let running = true;
+let idleFade = false;            // 멈춰 있는 동안에도 화면용 글로우를 서서히 꺼지게 (경기장 뇌)
 
 const DT = 0.5;                  // ms / tick
 const TAU = 10;                  // ms
@@ -153,6 +154,7 @@ onmessage = (e) => {
     if (m.nicotine !== undefined) nicotine = m.nicotine;
     if (m.speed !== undefined) ticksPerFrame = m.speed;
     if (m.running !== undefined) running = m.running;
+    if (m.idleFade !== undefined) idleFade = m.idleFade;
     if (m.covLearn !== undefined) covLearn = m.covLearn;
   } else if (m.type === 'reset') {
     v.fill(0); refr.fill(0); glow.fill(0); ad.fill(0); tick = 0;
@@ -282,6 +284,8 @@ function loop() {
   let frameSpikes = 0;
   if (running) {
     for (let t = 0; t < ticksPerFrame; t++) frameSpikes += step();
+  } else if (idleFade) {
+    for (let i = 0; i < n; i++) glow[i] *= 0.88;
   }
 
   // 글로우를 uint8로 양자화해 메인 스레드로 전송

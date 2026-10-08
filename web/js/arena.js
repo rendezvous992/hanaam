@@ -115,13 +115,17 @@ class FlyPlayer {
                   [wiring.indptr, wiring.targets, wiring.weights]);
     w.postMessage({ type: 'driveSet', key: 'vis', indices: vis.photoIdx });
     w.postMessage({ type: 'watch', indices: vis.perIdx });
-    w.postMessage({ type: 'params', speed: 2 });
+    w.postMessage({ type: 'params', speed: 2, idleFade: true });
     w.onmessage = e => {
       const m = e.data;
       if (m.id && this.pending.has(m.id)) {
         this.pending.get(m.id)(m); this.pending.delete(m.id);
       } else if (m.type === 'frame') {
-        this.glow = new Uint8Array(m.glow);
+        // 버퍼는 워커로 돌려보내므로(핑퐁) 그리기 전에 자기 사본에 복사해 둔다
+        const src = new Uint8Array(m.glow);
+        if (!this.glow || this.glow.length !== src.length) this.glow = new Uint8Array(src.length);
+        this.glow.set(src);
+        this.active = m.active;
         w.postMessage({ type: 'buffer', buf: m.glow }, [m.glow]);
       }
     };
@@ -237,11 +241,11 @@ class FlyPlayer {
 
 const HINT = {
   omok: '두 자리 모두 실제 연결체 뇌(뉴런 139,255개)입니다. 판을 20ms 보여주면 <b>그 뇌의 시각 뉴런이 가장 강하게 반응한 빈 칸</b>에 둡니다. 규칙·점수표·선생님은 없고, 5목 판정은 심판만 합니다. <b>조련</b>에서는 수가 놓일 때마다 조련사가 결과만 보고 칭찬(설탕 + 보상 도파민)이나 꾸지람(쓴맛 + 처벌 도파민)을 주고, 그 수를 고르게 만든 시냅스만 강화·약화됩니다. 대결은 학습 없이 실력만 겨룹니다. 위 선택 상자로 자리에 앉힐 초파리를 바꾸거나 새 초파리를 만들 수 있습니다.',
-  pong: '두 초파리가 마주 보고 탁구를 칩니다. 게임 시간 0.1초마다 각자의 눈에 <b>공과 자기 패들만</b> 20ms 보여주고, 시각 뉴런이 공을 가장 강하게 본 위치로 패들이 갑니다(정위 반응, 학습된 디코더 없음). <b>조련</b>에서는 공이 올 때마다 조련사가 떨어질 곳으로 다가갔는지만 보고 칭찬·꾸지람, 받아내면 설탕 + 보상 도파민, 놓치면 쓴맛 + 처벌 도파민을 주고, 그 움직임을 만든 시냅스만 바뀝니다. 나 vs 흑은 판 위에서 마우스·손가락으로 위쪽 패들을 움직입니다.',
+  pong: '두 초파리가 마주 보고 탁구를 칩니다. 게임 시간 0.1초마다 각자의 눈에 <b>공과 자기 라켓만</b> 20ms 보여주고, 시각 뉴런이 공을 가장 강하게 본 위치로 라켓이 갑니다(정위 반응, 학습된 디코더 없음). <b>조련</b>에서는 공이 올 때마다 조련사가 떨어질 곳으로 다가갔는지만 보고 칭찬·꾸지람, 받아내면 설탕 + 보상 도파민, 놓치면 쓴맛 + 처벌 도파민을 주고, 그 움직임을 만든 시냅스만 바뀝니다. <b>나 vs 아래</b>에서는 탁구대 위에서 마우스나 손가락으로 위쪽 라켓을 움직입니다.',
 };
 const CAP = {
   omok: '{n}가 본 판<br>밝을수록 뇌 반응이 강함<br>파란 테두리 = 고른 칸',
-  pong: '{n}가 본 화면(자기 시점)<br>위 = 공, 아래 = 자기 패들<br>파란 표시 = 뇌가 본 위치',
+  pong: '{n}가 본 화면(자기 시점)<br>위 = 공, 아래 = 자기 라켓<br>파란 표시 = 뇌가 본 위치',
 };
 // 이름 뒤 조사: 받침 있으면 a(이/을), 없으면 b(가/를). 숫자는 읽는 소리로.
 function josa(name, a, b) {
@@ -292,7 +296,7 @@ export class OmokArena {
     this.boardCv.onpointermove = e => {
       if (!this.pong) return;
       const r = this.boardCv.getBoundingClientRect();
-      this.pong.humanX = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      this.pong.humanX = Math.max(0, Math.min(1, (e.clientX - r.left - r.width * 0.2) / (r.width * 0.6)));   // 탁구대는 가운데 60% 폭
     };
   }
 
@@ -316,6 +320,7 @@ export class OmokArena {
       }
       this.setGame(game, true);
       this.board.fill(0); this.drawBoard(); this.updateCards();
+      this.idleLook();
       this.say('공유 저장소에서 훈련된 초파리를 찾는 중…');
       const found = await this.loadShared();
       this.busy = false;
@@ -331,6 +336,15 @@ export class OmokArena {
     if (!this.raf) this.loop();
   }
 
+  // 쉬는 동안에도 두 뇌가 지금 판을 계속 바라보게 한다 (뇌 화면이 살아 있도록)
+  idleLook() {
+    if (!this.flies) return;
+    for (const [k, me] of [['A', 1], ['B', 2]]) {
+      const f = this.flies[k], rates = f.ratesFor(this.board, me);
+      f.worker.postMessage({ type: 'drive', key: 'vis', rates }, [rates.buffer]);
+    }
+  }
+
   close() {
     this.stop = true;
     this.el.hidden = true;
@@ -341,7 +355,7 @@ export class OmokArena {
 
   setGame(game, force) {
     if (!force && game === this.game) return;
-    if (this.busy) { this.say('진행 중인 경기·훈련을 멈춘 뒤 바꿔 주세요.'); return; }
+    if (!force && this.busy) { this.say('진행 중인 경기·훈련을 멈춘 뒤 바꿔 주세요.'); return; }
     this.game = game; this.human = false;
     const $ = id => document.getElementById(id), pong = game === 'pong';
     $('arena-tab-omok').classList.toggle('on', !pong);
@@ -748,17 +762,21 @@ export class OmokArena {
   // 발전 그래프: 값(점) + 최근 win개 이동 평균(선)
   drawSeries(k, p, win, empty) {
     const cv = document.getElementById(`omok-prog-${k}`), g = cv.getContext('2d');
-    const W = cv.width, H = cv.height;
-    g.fillStyle = '#0b0f1e'; g.fillRect(0, 0, W, H);
-    g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 1;
+    const W = cv.width, H = cv.height, u = W / 220;     // 캔버스는 표시 크기의 2배 해상도
+    g.fillStyle = '#0b0f19'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(160,178,220,0.12)'; g.lineWidth = u;
     for (const y of [0.25, 0.5, 0.75]) { g.beginPath(); g.moveTo(0, H * y); g.lineTo(W, H * y); g.stroke(); }
-    g.fillStyle = 'rgba(255,255,255,0.45)'; g.font = '9px sans-serif';
-    g.fillText('100%', 2, 9); g.fillText('0%', 2, H - 2);
-    if (!p.length) { g.textAlign = 'center'; g.fillText(empty, W / 2, H / 2 + 3); g.textAlign = 'left'; return; }
-    const x = i => p.length === 1 ? W / 2 : 24 + (W - 28) * i / (p.length - 1), y = v => H - 3 - (H - 6) * v;
-    g.fillStyle = 'rgba(127,215,255,0.35)';
-    p.forEach((v, i) => g.fillRect(x(i) - 1, y(v) - 1, 2, 2));
-    g.strokeStyle = '#ffcf5a'; g.lineWidth = 2; g.beginPath();
+    g.fillStyle = 'rgba(143,152,174,0.8)'; g.font = `${9 * u}px "IBM Plex Mono", ui-monospace, monospace`;
+    g.textBaseline = 'alphabetic';
+    g.fillText('100%', 3 * u, 10 * u); g.fillText('0%', 3 * u, H - 3 * u);
+    if (!p.length) {
+      g.textAlign = 'center'; g.font = `${10 * u}px "IBM Plex Sans KR", system-ui, sans-serif`;
+      g.fillText(empty, W / 2, H / 2 + 3 * u); g.textAlign = 'left'; return;
+    }
+    const x = i => p.length === 1 ? W / 2 : 28 * u + (W - 32 * u) * i / (p.length - 1), y = v => H - 4 * u - (H - 8 * u) * v;
+    g.fillStyle = 'rgba(140,200,245,0.35)';
+    p.forEach((v, i) => g.fillRect(x(i) - u, y(v) - u, 2 * u, 2 * u));
+    g.strokeStyle = '#f0b64e'; g.lineWidth = 2 * u; g.lineJoin = 'round'; g.beginPath();
     let s = 0;
     p.forEach((v, i) => {
       s += v; if (i >= win) s -= p[i - win];
@@ -788,9 +806,9 @@ export class OmokArena {
   }
 
   drawBoard() {
-    const g = this.boardCv.getContext('2d'), W = this.boardCv.width, s = W / N;
+    const g = this.boardCv.getContext('2d'), W = this.boardCv.width, s = W / N, u = W / 360;
     g.fillStyle = '#c9a063'; g.fillRect(0, 0, W, W);
-    g.strokeStyle = 'rgba(60,40,20,0.7)'; g.lineWidth = 1;
+    g.strokeStyle = 'rgba(60,40,20,0.7)'; g.lineWidth = u;
     for (let i = 0; i < N; i++) {
       g.beginPath(); g.moveTo(s / 2, s / 2 + i * s); g.lineTo(W - s / 2, s / 2 + i * s); g.stroke();
       g.beginPath(); g.moveTo(s / 2 + i * s, s / 2); g.lineTo(s / 2 + i * s, W - s / 2); g.stroke();
@@ -804,7 +822,7 @@ export class OmokArena {
       g.fillStyle = grd;
       g.beginPath(); g.arc(x, y, s * 0.42, 0, Math.PI * 2); g.fill();
       if (c === this.lastMove) {
-        g.strokeStyle = '#e8442c'; g.lineWidth = 2;
+        g.strokeStyle = '#e8442c'; g.lineWidth = 2 * u;
         g.beginPath(); g.arc(x, y, s * 0.18, 0, Math.PI * 2); g.stroke();
       }
     }
@@ -828,6 +846,10 @@ export class OmokArena {
       g.putImageData(img, 0, 0);
     };
     draw('A'); draw('B');
+    for (const k of ['A', 'B']) {
+      const f = this.flies?.[k], el = document.getElementById(`omok-act-${k}`);
+      if (f && el) el.textContent = `활성 뉴런 ${(f.active || 0).toLocaleString()}`;
+    }
     if (this.game === 'pong' && this.pong) {
       this.pong.draw(this.boardCv);
       if (this.pong.mode) { this.drawSeen('A'); this.drawSeen('B'); }

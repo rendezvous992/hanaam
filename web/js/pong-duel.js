@@ -129,6 +129,7 @@ export class PongDuel {
           b.vx = Math.sin(a) * sp; b.vy = (down ? -1 : 1) * Math.abs(Math.cos(a) * sp);
           b.y = line;
           ev.push({ k, hit: true });
+          (this.fx || (this.fx = [])).push({ x: b.x, y: line, t: performance.now() });
         } else b.passed = true;
       }
       if (b.y > 1.04 || b.y < -0.04) {
@@ -215,24 +216,118 @@ export class PongDuel {
     return w;
   }
 
-  // 화면: 두 걸음 사이를 이어 그린다
+  // 화면: 위에서 내려다본 탁구대. 두 걸음 사이를 이어 그린다.
+  //   물리 좌표 y = 0.1(위 라켓 줄) ~ 0.9(아래 라켓 줄)이 탁구대 양 끝에 오고, 놓친 공은 대 밖 바닥으로 나간다.
+  //   공 높이는 보는 사람을 위한 연출이다(보낸 쪽에서 떠서 상대 코트에 한 번 튀고 라켓으로) —
+  //   초파리 눈에 보여 주는 자극 화면(view)은 그대로 공과 자기 라켓만 있는 흑백 화면이다.
   draw(cv) {
-    const g = cv.getContext('2d'), W = cv.width, H = cv.height;
-    const t = clamp((performance.now() - this.stepAt) / this.stepDur, 0, 1), p = this.prev, c = this.snap();
+    const g = cv.getContext('2d'), W = cv.width, H = cv.height, u = W / 360;
+    const now = performance.now();
+    const t = clamp((now - this.stepAt) / this.stepDur, 0, 1), p = this.prev, c = this.snap();
     const L = (a, b) => a + (b - a) * t;
-    g.fillStyle = '#123a3a'; g.fillRect(0, 0, W, H);
-    g.strokeStyle = 'rgba(255,255,255,0.5)'; g.lineWidth = 2; g.strokeRect(4, 4, W - 8, H - 8);
-    g.setLineDash([8, 8]); g.beginPath(); g.moveTo(4, H / 2); g.lineTo(W - 4, H / 2); g.stroke(); g.setLineDash([]);
-    g.font = 'bold 40px sans-serif'; g.fillStyle = 'rgba(255,255,255,0.18)'; g.textAlign = 'right';
-    g.fillText(this.score.B, W - 14, H / 2 - 14); g.fillText(this.score.A, W - 14, H / 2 + 44);
-    g.textAlign = 'left'; g.font = '12px sans-serif'; g.fillStyle = 'rgba(255,255,255,0.6)';
-    const f = this.arena.flies;
-    g.fillText(this.mode === 'human' ? '나' : f.B.name, 10, 20); g.fillText(f.A.name, 10, H - 10);
-    const pad = (x, y, col) => { g.fillStyle = col; g.fillRect((x - PAD_W / 2) * W, y * H - 4, PAD_W * W, 8); };
-    pad(L(p.B, c.B), 1 - PAD_Y, this.mode === 'human' ? '#9cff8a' : '#7fd7ff');
-    pad(L(p.A, c.A), PAD_Y, '#ffb347');
-    g.fillStyle = '#fff';
-    g.beginPath(); g.arc(L(p.x, c.x) * W, L(p.y, c.y) * H, BALL_R * W, 0, Math.PI * 2); g.fill();
+    const tw = W * 0.6, th = H * 0.84, x0 = (W - tw) / 2, y0 = (H - th) / 2;
+    const X = x => x0 + x * tw, Y = y => y0 + (y - (1 - PAD_Y)) / (2 * PAD_Y - 1) * th;
+    // 바닥
+    const fl = g.createRadialGradient(W / 2, H / 2, W * 0.1, W / 2, H / 2, W * 0.75);
+    fl.addColorStop(0, '#1b1d24'); fl.addColorStop(1, '#0c0d11');
+    g.fillStyle = fl; g.fillRect(0, 0, W, H);
+    // 탁구대 그림자 + 상판
+    g.save();
+    g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 18 * u; g.shadowOffsetY = 6 * u;
+    g.fillStyle = '#1d4f7c'; g.fillRect(x0, y0, tw, th);
+    g.restore();
+    const top = g.createLinearGradient(x0, y0, x0 + tw, y0 + th);
+    top.addColorStop(0, '#2563a0'); top.addColorStop(0.55, '#1d5590'); top.addColorStop(1, '#17477a');
+    g.fillStyle = top; g.fillRect(x0, y0, tw, th);
+    // 위쪽 조명 반사
+    const sheen = g.createRadialGradient(x0 + tw * 0.35, y0 + th * 0.3, 0, x0 + tw * 0.35, y0 + th * 0.3, tw * 0.9);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.07)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = sheen; g.fillRect(x0, y0, tw, th);
+    // 흰 테두리선(2cm)과 가운데 선(3mm)
+    g.strokeStyle = 'rgba(245,247,250,0.92)';
+    g.lineWidth = 3.2 * u; g.strokeRect(x0 + 1.6 * u, y0 + 1.6 * u, tw - 3.2 * u, th - 3.2 * u);
+    g.lineWidth = 1.2 * u; g.beginPath(); g.moveTo(X(0.5), y0); g.lineTo(X(0.5), y0 + th); g.stroke();
+    // 그물: 그림자 → 그물망 → 위 흰 띠 → 양옆 기둥
+    const ny = Y(0.5), ext = 10 * u;
+    g.fillStyle = 'rgba(0,0,0,0.28)'; g.fillRect(x0 - ext, ny + 2 * u, tw + ext * 2, 6 * u);
+    g.fillStyle = 'rgba(18,20,26,0.85)'; g.fillRect(x0 - ext, ny - 3 * u, tw + ext * 2, 6 * u);
+    g.strokeStyle = 'rgba(200,205,215,0.18)'; g.lineWidth = 0.8 * u;
+    for (let x = x0 - ext; x < x0 + tw + ext; x += 3.5 * u) { g.beginPath(); g.moveTo(x, ny - 3 * u); g.lineTo(x, ny + 3 * u); g.stroke(); }
+    g.fillStyle = '#f2f3f5'; g.fillRect(x0 - ext, ny - 3.6 * u, tw + ext * 2, 1.6 * u);
+    g.fillStyle = '#2b2e36';
+    for (const px of [x0 - ext - 3 * u, x0 + tw + ext]) g.fillRect(px, ny - 5 * u, 3 * u, 10 * u);
+
+    // 점수판 (대 옆 바닥)
+    const f = this.arena.flies, nameB = this.mode === 'human' ? '나' : f.B.name;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    const side = (W - tw) / 4;
+    for (const [nm, sc, y] of [[nameB, this.score.B, H * 0.3], [f.A.name, this.score.A, H * 0.7]]) {
+      g.fillStyle = 'rgba(255,255,255,0.9)'; g.font = `600 ${30 * u}px "IBM Plex Mono", ui-monospace, monospace`;
+      g.fillText(String(sc), W - side, y);
+      g.fillStyle = 'rgba(200,206,220,0.55)'; g.font = `500 ${10 * u}px "IBM Plex Sans KR", system-ui, sans-serif`;
+      g.fillText(nm.length > 7 ? nm.slice(0, 7) + '…' : nm, W - side, y + 24 * u);
+    }
+    g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+
+    // 라켓: 둥근 판 + 러버(A 빨강, 위쪽 검정) + 나무 테두리 + 손잡이(선수 쪽)
+    const paddle = (x, y, rubber, out) => {
+      const rx = PAD_W / 2 * tw, ry = rx * 0.78, cx = X(x), cy = Y(y);
+      g.save();
+      g.shadowColor = 'rgba(0,0,0,0.5)'; g.shadowBlur = 8 * u; g.shadowOffsetY = 4 * u;
+      // 손잡이
+      const hw = rx * 0.3, hl = ry * 1.25, hy = out > 0 ? cy + ry * 0.75 : cy - ry * 0.75 - hl;
+      const wood = g.createLinearGradient(cx - hw / 2, 0, cx + hw / 2, 0);
+      wood.addColorStop(0, '#9c6d3d'); wood.addColorStop(0.5, '#d2a46a'); wood.addColorStop(1, '#8e6134');
+      g.fillStyle = wood;
+      g.beginPath(); g.roundRect ? g.roundRect(cx - hw / 2, hy, hw, hl, hw * 0.35) : g.rect(cx - hw / 2, hy, hw, hl); g.fill();
+      // 판(나무 테두리)
+      g.fillStyle = '#c9965e';
+      g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.fill();
+      g.restore();
+      // 러버
+      const rg = g.createRadialGradient(cx - rx * 0.3, cy - ry * 0.35, rx * 0.1, cx, cy, rx);
+      if (rubber === 'red') { rg.addColorStop(0, '#e2483f'); rg.addColorStop(1, '#a8211c'); }
+      else { rg.addColorStop(0, '#3a3c43'); rg.addColorStop(1, '#141519'); }
+      g.fillStyle = rg;
+      g.beginPath(); g.ellipse(cx, cy, rx - 2.2 * u, ry - 2.2 * u, 0, 0, Math.PI * 2); g.fill();
+      // 러버 돌기 결
+      g.fillStyle = 'rgba(255,255,255,0.05)';
+      for (let i = -3; i <= 3; i++) for (let j = -2; j <= 2; j++) {
+        const dx = i * rx * 0.24, dy = j * ry * 0.3;
+        if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) < 0.7) { g.beginPath(); g.arc(cx + dx, cy + dy, 1.1 * u, 0, Math.PI * 2); g.fill(); }
+      }
+    };
+    paddle(L(p.B, c.B), 1 - PAD_Y, 'black', -1);
+    paddle(L(p.A, c.A), PAD_Y, 'red', 1);
+
+    // 라켓에 맞은 순간의 고리
+    this.fx = (this.fx || []).filter(e => now - e.t < 350);
+    for (const e of this.fx) {
+      const k = (now - e.t) / 350;
+      g.strokeStyle = `rgba(255,236,200,${0.6 * (1 - k)})`; g.lineWidth = 2 * u;
+      g.beginPath(); g.arc(X(e.x), Y(e.y), (8 + 26 * k) * u, 0, Math.PI * 2); g.stroke();
+    }
+
+    // 공: 높이(연출) → 그림자 오프셋·크기, 잔상
+    const bx = L(p.x, c.x), by = L(p.y, c.y), b = this.ball;
+    const from = b.vy > 0 ? 1 - PAD_Y : PAD_Y, s = clamp(Math.abs(by - from) / (2 * PAD_Y - 1), 0, 1.2);
+    const h = s < 0.72 ? Math.sin(Math.PI * s / 0.72) : 0.5 * Math.sin(Math.PI * (s - 0.72) / 0.56);
+    const hh = Math.max(0, h);
+    this.trail = (this.trail || []).filter(q => now - q.t < 140);
+    this.trail.push({ x: bx, y: by, h: hh, t: now });
+    const br = BALL_R * tw * 0.75;
+    g.fillStyle = `rgba(0,0,0,${0.35 - hh * 0.15})`;
+    g.beginPath(); g.ellipse(X(bx) + hh * 7 * u, Y(by) + hh * 12 * u, br * (1 + hh * 0.3), br * 0.8 * (1 + hh * 0.3), 0, 0, Math.PI * 2); g.fill();
+    for (const q of this.trail) {
+      const a = 1 - (now - q.t) / 140;
+      g.fillStyle = `rgba(255,170,90,${0.18 * a})`;
+      g.beginPath(); g.arc(X(q.x), Y(q.y) - q.h * 9 * u, br * (1 + q.h * 0.35), 0, Math.PI * 2); g.fill();
+    }
+    const bxs = X(bx), bys = Y(by) - hh * 9 * u, rr = br * (1 + hh * 0.35);
+    const ball = g.createRadialGradient(bxs - rr * 0.35, bys - rr * 0.4, rr * 0.1, bxs, bys, rr);
+    ball.addColorStop(0, '#fff6ea'); ball.addColorStop(0.45, '#ffb15a'); ball.addColorStop(1, '#e07a22');
+    g.fillStyle = ball;
+    g.beginPath(); g.arc(bxs, bys, rr, 0, Math.PI * 2); g.fill();
   }
 
   // 초파리가 본 화면(자기 시점): 위 = 공 대역, 아래 = 패들 대역, 밝을수록 반응이 강함

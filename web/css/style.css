@@ -194,7 +194,7 @@ label {
   color: var(--dim);
   margin: 12px 0 2px;
 }
-label span { color: var(--text); font-family: var(--font-data); font-size: 11.5px; text-align: right; }
+label span { color: var(--dim); font: inherit; font-variant-numeric: tabular-nums; text-align: right; }
 label input { grid-column: 1 / -1; }
 input[type=range] {
   -webkit-appearance: none;
@@ -318,6 +318,7 @@ footer a:hover { text-decoration: underline; }
 .fly-card h3 { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
 .fly-card h3 span[id^="omok-side"] { color: var(--faint); font-weight: 500; }
 .fly-card > canvas { width: 100%; max-width: 100%; aspect-ratio: 22 / 13; border-radius: 9px; display: block; background: #060914; border: 1px solid var(--line); }
+.brain-cap { display: flex; justify-content: space-between; gap: 8px; margin-top: 5px; font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .slot-row { display: flex; gap: 6px; margin: 0 0 10px; }
 .slot-row .slot-pick { flex: 1; min-width: 0; margin: 0; }
 .slot-pick, .new-fly input {
