@@ -64,9 +64,9 @@ export class BrainRenderer {
     this.rotX = 0.12;
     this.rotY = 0.18;
     // 카메라 거리: 처음에는 뇌 전체가 여유 있게 보이도록 멀리서 시작한다 (세로 화면이면 더 멀리)
-    this.distMin = 1.2; this.distMax = 7;
+    this.distMin = 1.2; this.distMax = 10;
     const asp = innerWidth / Math.max(innerHeight, 1);
-    this.dist = Math.min(this.distMax, asp >= 1 ? 3.6 : 3.6 / Math.max(asp, 0.45) * 0.8);
+    this.dist = Math.min(this.distMax, asp >= 1 ? 4.4 : 4.4 / Math.max(asp, 0.4) * 0.75);
     this.onZoom = null;              // 휠·핀치로 거리가 바뀌면 알린다 (확대 막대 동기화)
     this.autoRotate = true;
 
