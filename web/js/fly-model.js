@@ -24,25 +24,37 @@ function canvasTexture(w, h, draw, srgb = true) {
 
 const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 
+// 배 등판(tergite) 뒤 가장자리 위치(UV v: 0 꼬리 끝 → 1 가슴), 띠 폭, 진하기
+const ABD_BANDS = [[0.08, 0.075, 0.95], [0.2, 0.07, 0.92], [0.34, 0.062, 0.86],
+                   [0.48, 0.052, 0.76], [0.62, 0.042, 0.62], [0.76, 0.032, 0.42]];
+// 마디 굴곡: 등판 뒤 가장자리는 살짝 들려 턱을 이루고, 바로 뒤 마디 사이 막은 오목하다
+function abdRelief(v) {
+  let f = 0;
+  for (const [b] of ABD_BANDS) {
+    const d = v - b;
+    f += -0.05 * Math.exp(-Math.pow((d + 0.009) / 0.008, 2)) + 0.032 * Math.exp(-Math.pow((d - 0.012) / 0.016, 2));
+  }
+  return f;
+}
+
 function abdomenTextures() {
   // 회전체 UV: u는 둘레(0.75 = 등 정중앙), v는 몸축(0 = 꼬리 끝, 1 = 가슴 쪽).
   // 등판(tergite) 뒤쪽 가장자리마다 거무스름한 띠가 있고, 띠 가장자리는 가운데가 앞으로 파인
   // 물결 모양이다. 띠는 꼬리로 갈수록 넓고 진하다. 큐티클은 얼룩덜룩하고 미세털 점이 촘촘하다.
-  const bands = [[0.08, 0.075, 0.95], [0.2, 0.07, 0.92], [0.34, 0.062, 0.86],
-                 [0.48, 0.052, 0.76], [0.62, 0.042, 0.62], [0.76, 0.032, 0.42]];
+  const bands = ABD_BANDS;
   const dorsOf = x => Math.max(0, Math.cos((x - 0.75) * Math.PI * 2));
   const map = canvasTexture(512, 512, (g, w, h) => {
     seed = 4242;
-    const ventral = [220, 192, 136], dorsal = [196, 150, 80];
+    const ventral = [206, 180, 128], dorsal = [180, 134, 70];
     for (let x = 0; x < w; x++) {
       const d = dorsOf(x / w);
       g.fillStyle = `rgb(${mix(ventral, dorsal, Math.pow(d, 0.6))})`;
       g.fillRect(x, 0, 1, h);
     }
     // 큐티클 얼룩 (부드러운 큰 점)
-    for (let i = 0; i < 500; i++) {
-      const x = rnd() * w, y = rnd() * h, r = 4 + rnd() * 14;
-      g.fillStyle = `rgba(${rnd() < 0.5 ? '120,86,48' : '232,212,170'},${0.04 + rnd() * 0.05})`;
+    for (let i = 0; i < 220; i++) {
+      const x = rnd() * w, y = rnd() * h, r = 6 + rnd() * 16;
+      g.fillStyle = `rgba(${rnd() < 0.5 ? '120,86,48' : '232,212,170'},${0.025 + rnd() * 0.03})`;
       g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
     }
     for (const [v, bw, a] of bands) {
@@ -51,7 +63,7 @@ function abdomenTextures() {
         if (alpha < 0.02) continue;
         // 띠 앞가장자리: 등 정중앙에서 앞으로 들어가는 물결 + 잔떨림
         const notch = 0.35 * bw * Math.exp(-Math.pow((x / w - 0.75) * 9, 2));
-        const wob = bw * 0.12 * Math.sin(x * 0.21) + bw * 0.08 * Math.sin(x * 0.53);
+        const wob = bw * 0.1 * Math.sin(x / w * Math.PI * 6 + v * 9) + bw * 0.05 * Math.sin(x / w * Math.PI * 14 + v * 4);
         const top = (1 - v - bw - wob + notch) * h, bot = (1 - v + bw * 0.12) * h;
         const grad = g.createLinearGradient(0, top, 0, bot);
         grad.addColorStop(0, `rgba(58,38,22,0)`);
@@ -62,12 +74,29 @@ function abdomenTextures() {
       }
     }
     // 미세털 뿌리 점묘
-    for (let i = 0; i < 9000; i++) {
+    for (let i = 0; i < 5000; i++) {
       const x = rnd() * w, y = rnd() * h, d = dorsOf(x / w);
-      g.fillStyle = `rgba(40,26,14,${0.06 + d * 0.16})`;
-      g.fillRect(x, y, 1.2, 1.2);
+      g.fillStyle = `rgba(40,26,14,${0.03 + d * 0.07})`;
+      g.fillRect(x, y, 1, 1);
     }
   });
+  // 거칠기(초록 채널): 등판은 은은한 윤기, 마디 사이 막과 배 쪽은 무광
+  const rough = canvasTexture(512, 512, (g, w, h) => {
+    seed = 7;
+    for (let x = 0; x < w; x++) {
+      const d = dorsOf(x / w), r = Math.round(255 * (0.8 - 0.22 * Math.pow(d, 0.7)));
+      g.fillStyle = `rgb(${r},${r},${r})`; g.fillRect(x, 0, 1, h);
+    }
+    for (const [v, bw] of bands) {
+      const top = (1 - v - bw) * h, bot = (1 - v) * h;
+      g.fillStyle = 'rgba(70,70,70,0.45)'; g.fillRect(0, top, w, bot - top);
+      g.fillStyle = 'rgba(235,235,235,0.7)'; g.fillRect(0, bot, w, 0.016 * h);
+    }
+    for (let i = 0; i < 6000; i++) {
+      g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+      g.fillRect(rnd() * w, rnd() * h, 2, 2);
+    }
+  }, false);
   const bump = canvasTexture(512, 512, (g, w, h) => {
     seed = 99;
     g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
@@ -84,7 +113,7 @@ function abdomenTextures() {
       g.fillRect(rnd() * w, rnd() * h, 1.3, 1.3);
     }
   }, false);
-  return { map, bump };
+  return { map, bump, rough };
 }
 
 function thoraxTextures() {
@@ -308,8 +337,9 @@ export function buildFlyModel(renderer) {
   const eye = eyeTextures();
   const legT = legTextures();
   const mats = {
-    abd: new THREE.MeshPhysicalMaterial({ map: abd.map, bumpMap: abd.bump, bumpScale: 0.006, roughness: 0.66,
-      sheen: srgb(0x4a3a28), envMap: env, envMapIntensity: 0.35 }),
+    abd: new THREE.MeshPhysicalMaterial({ map: abd.map, bumpMap: abd.bump, bumpScale: 0.004,
+      roughness: 1, roughnessMap: abd.rough, sheen: srgb(0x3a2c1c), emissive: srgb(0x1a0e05),
+      envMap: env, envMapIntensity: 0.45 }),
     thx: new THREE.MeshPhysicalMaterial({ map: thx.map, bumpMap: thx.bump, bumpScale: 0.005,
       roughness: 0.6, clearcoat: 0.08, clearcoatRoughness: 0.6, sheen: srgb(0x6a5a44),
       envMap: env, envMapIntensity: 0.4 }),
@@ -354,9 +384,20 @@ export function buildFlyModel(renderer) {
   const prof = new THREE.SplineCurve([
     [0.0, 0], [0.1, 0.04], [0.22, 0.14], [0.35, 0.34], [0.45, 0.64], [0.51, 0.98],
     [0.52, 1.28], [0.5, 1.58], [0.43, 1.86], [0.32, 2.08], [0.16, 2.22], [0.0, 2.26],
-  ].map(([r, y]) => new THREE.Vector2(r, y))).getSpacedPoints(56);
+  ].map(([r, y]) => new THREE.Vector2(r, y))).getSpacedPoints(180);
   prof[0].x = 0.001; prof[prof.length - 1].x = 0.001;
-  const abdGeo = new THREE.LatheGeometry(prof, 56);
+  const abdGeo = new THREE.LatheGeometry(prof, 64);
+  {
+    // 마디 굴곡은 등·옆(등판)에서 뚜렷하고 배 쪽(복판)에서는 약하다. 회전체 로컬: x = r·sinφ (음수 = 등)
+    const p = abdGeo.attributes.position, uv = abdGeo.attributes.uv;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i), r = Math.hypot(x, z);
+      if (r < 1e-4) continue;
+      const dors = Math.max(0, -x / r), k = 1 + abdRelief(uv.getY(i)) * (0.35 + 0.65 * dors);
+      p.setX(i, x * k); p.setZ(i, z * k);
+    }
+    abdGeo.computeVertexNormals();
+  }
   abdGeo.translate(0, -2.26, 0);
   abdGeo.rotateZ(-Math.PI / 2);                     // 꼬리 x=-2.26, 가슴 쪽 x=0
   const abdomen = M(abdGeo, mats.abd);
@@ -390,7 +431,7 @@ export function buildFlyModel(renderer) {
     ari.position.set(0.34, 0.12, sz * 0.1);
     ari.quaternion.setFromUnitVectors(UP, V3(0.7, 0.55, sz * 0.45).normalize());
     head.add(ari);
-    const ariGeo = new THREE.CylinderGeometry(0.004, 0.009, 1, 6);
+    const ariGeo = new THREE.CylinderGeometry(0.0018, 0.0045, 1, 5);
     ariGeo.translate(0, 0.5, 0);
     const shaft = M(ariGeo, mats.bristle, ari);
     shaft.scale.set(1, 0.34, 1);
@@ -408,7 +449,7 @@ export function buildFlyModel(renderer) {
   }
 
   // ── 강모(굵은 털): 표면 법선과 뒤쪽 방향을 섞어 눕힌다 ──
-  const bristleGeo = new THREE.CylinderGeometry(0.003, 0.014, 1, 6);
+  const bristleGeo = new THREE.CylinderGeometry(0.0012, 0.0062, 1, 5);
   bristleGeo.translate(0, 0.5, 0);
   const addBristle = (parent, p, dir, len) => {
     const b = M(bristleGeo, mats.bristle, parent);
@@ -439,26 +480,25 @@ export function buildFlyModel(renderer) {
     addBristle(head, V3(0.14, 0.32, sz * 0.28), V3(0.4, 1, sz * 0.5), 0.16);
   }
 
-  // ── 미세털(microchaetae): 짧고 가는 털을 가슴·배·머리에 촘촘히, 뒤쪽으로 눕혀서 ──
-  const hairGeo = new THREE.CylinderGeometry(0.001, 0.0042, 1, 4);
-  hairGeo.translate(0, 0.5, 0);
-  const dummy = new THREE.Object3D();
-  const hairs = (parent, list) => {
-    const im = new THREE.InstancedMesh(hairGeo, mats.hair, list.length);
+  // ── 미세털(microchaetae): 짧고 아주 가는 털을 가슴·배·머리에 촘촘히, 뒤쪽으로 눕혀서.
+  //   실제 굵기는 수 μm라 화면에서는 1픽셀보다 가늘다 — 굵기 있는 메시 대신 반투명 1픽셀 선으로 그린다.
+  const hairs = (parent, list, opacity = 0.55) => {
+    const pos = new Float32Array(list.length * 6);
     list.forEach(([p, dir, len], i) => {
-      dummy.position.copy(p);
-      dummy.quaternion.setFromUnitVectors(UP, dir.normalize());
-      dummy.scale.set(1, len, 1);
-      dummy.updateMatrix();
-      im.setMatrixAt(i, dummy.matrix);
+      const q = p.clone().addScaledVector(dir.normalize(), len);
+      pos.set([p.x, p.y, p.z, q.x, q.y, q.z], i * 6);
     });
-    parent.add(im);
-    return im;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      color: mats.hair.color, transparent: true, opacity, depthWrite: false }));
+    parent.add(ls);
+    return ls;
   };
   seed = 8080;
   {
     const list = [];
-    for (let i = 0; i < 320; i++) {
+    for (let i = 0; i < 900; i++) {
       const nx = -0.55 + rnd() * 1.35, nz = (rnd() * 2 - 1) * 0.85;
       if (nx * nx + nz * nz > 0.9) continue;
       const [p, n] = onThorax(nx, nz);
@@ -476,19 +516,24 @@ export function buildFlyModel(renderer) {
       return 0;
     };
     const list = [];
-    for (let i = 0; i < 360; i++) {
-      const a = (0.08 + rnd() * 0.86) * 2.26, psi = (rnd() * 2 - 1) * 1.7;
-      const r = rAt(a);
+    for (let i = 0; i < 1400; i++) {
+      // 등판마다 뒤 가장자리 쪽에 더 촘촘하다
+      const [b, bw] = ABD_BANDS[Math.floor(rnd() * ABD_BANDS.length)];
+      const v = rnd() < 0.6 ? b + rnd() * bw * 1.6 : 0.06 + rnd() * 0.86;
+      const a = v * 2.26, psi = (rnd() * 2 - 1) * 1.75;
+      const dors = Math.max(0, Math.cos(psi));
+      const r = rAt(a) * (1 + abdRelief(v) * (0.35 + 0.65 * dors)) * 1.004;
       if (r < 0.08) continue;
       const p = V3(a - 2.26, r * Math.cos(psi), r * Math.sin(psi));
       const n = V3(0, Math.cos(psi), Math.sin(psi));
-      list.push([p, n.multiplyScalar(0.25).add(V3(-1, 0, 0)), 0.02 + rnd() * 0.025]);
+      const side = V3(0, -Math.sin(psi), Math.cos(psi)).multiplyScalar((rnd() - 0.5) * 0.5);
+      list.push([p, n.multiplyScalar(0.55 + rnd() * 0.3).add(V3(-1, 0, 0)).add(side), 0.03 + rnd() * 0.03]);
     }
-    hairs(abdomen, list);
+    hairs(abdomen, list, 0.4);
   }
   {
     const list = [];
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 220; i++) {
       const th = rnd() * Math.PI * 2, y = 0.25 + rnd() * 0.75, rr = Math.sqrt(1 - y * y);
       const d = V3(-Math.abs(Math.cos(th)) * rr, y, Math.sin(th) * rr);
       if (Math.abs(d.z) > 0.55) continue;      // 겹눈 위는 피한다
