@@ -99,6 +99,7 @@ class FlyPlayer {
   constructor(slot, vis, n, wiring, rewardIdx) {
     this.slot = slot; this.vis = vis; this.rewardIdx = rewardIdx;
     this.eye = new FlyEye(vis);
+    this.rpe = true;               // 보상 예측 오차로 학습 (실험용으로 끌 수 있게)
     this.restore({});
     // 칸별로 그 칸을 보는 시각 뉴런(전역 인덱스) — 학습 대상
     this.cellNeurons = Array.from({ length: N * N }, () => []);
@@ -156,6 +157,7 @@ class FlyPlayer {
     this.praise = Array.isArray(m.praise) ? m.praise.slice() : [];
     this.pong = { w: 0, l: 0, trained: 0, hits: '', ...m.pong };
     this.synChanged = m.synChanged || 0;
+    this.rAvg = 0;                 // 평소 받던 보상(지수평균) — 보상 예측 오차의 기준
     this.lastSeen = null; this.lastMove = -1; this.pongSeen = null;
     this.dirty = false;
   }
@@ -184,8 +186,10 @@ class FlyPlayer {
     return this.eye.rates(this.canvas);
   }
 
-  // 판을 보고 → 뇌 반응이 가장 강한 빈 칸
-  async choose(board, me) {
+  // 판을 보고 → 뇌 반응이 가장 강한 빈 칸.
+  // explore(조련 중)면 반응 세기의 4제곱에 비례한 확률로 고른다: 늘 1등 칸만 두면 안 가 본
+  // 좋은 수를 영영 발견하지 못한다. 고르는 기준은 여전히 뇌 반응뿐이다.
+  async choose(board, me, explore = false) {
     const rates = this.ratesFor(board, me);
     const keep = rates.slice();
     const { counts } = await this.call({ type: 'probe', key: 'vis', rates, ticks: this.probeTicks ?? PROBE_TICKS, learn: true },
@@ -199,13 +203,26 @@ class FlyPlayer {
       const s = act[c] + Math.random() * 1e-6;     // 동점일 때만 가르는 아주 작은 떨림
       if (s > bs) { bs = s; best = c; }
     }
+    if (explore && bs > 0) {
+      let tot = 0;
+      const p = new Float64Array(N * N);
+      for (let c = 0; c < N * N; c++) if (!board[c]) tot += (p[c] = (act[c] / bs) ** EXPLORE_K);
+      let x = Math.random() * tot;
+      for (let c = 0; c < N * N; c++) if (p[c]) { x -= p[c]; if (x <= 0) { best = c; break; } }
+    }
     this.lastSeen = act; this.lastMove = best;
     return best;
   }
 
   // 조련사 보상: (pulse면) 맛(설탕/쓴맛) + 도파민(PAM/PPL1)을 짧게 주고, post 뉴런으로의 입력 시냅스를 바꾼다
+  // 보상 예측 오차: 조련사 판정 r에서 평소 받던 보상을 뺀 만큼을 도파민 신호로 쓴다
+  //   (실제 도파민 뉴런처럼 '예상보다 좋았다/나빴다'). 꾸지람만 쌓여 약화만 되는 것을 막는다.
   async rewardNeurons(post, r, pulse = true) {
     if (!r) return;
+    const d = this.rpe ? r - this.rAvg : r;
+    this.rAvg += 0.05 * (r - this.rAvg);
+    r = d;
+    if (Math.abs(r) < 1e-3) return;
     if (pulse) {
       const idx = r > 0 ? this.rewardIdx.good : this.rewardIdx.bad;
       this.worker.postMessage({ type: 'stim', key: 'da', on: true, rate: 150, indices: idx });
@@ -233,6 +250,8 @@ function josa(name, a, b) {
   return name + ('013678'.includes(c) ? a : b);
 }
 
+const EXPLORE_K = 4;
+
 const AUTOSAVE = { omok: 10, pong: 20 };       // 무한 조련 중 이만큼마다 저장 (판 / 점)
 
 // ── 경기장 UI ────────────────────────────────────────
@@ -248,6 +267,7 @@ export class OmokArena {
     this.board = new Int8Array(N * N);
     this.busy = false; this.human = false; this.lastMove = -1;
     this.game = 'omok';
+    this.explore = true;           // 조련 중 탐색 (실험용으로 끌 수 있게)
     this.store = new BrainStore();
     this.savedAt = null;
     this.roster = new Map();      // id → 메타 (명단: 공유 저장소 + 이 창에서 만든 것)
@@ -543,7 +563,7 @@ export class OmokArena {
       const notes = await Promise.all(slots.map(async (g, i) => {
         const k = mover(g), f = this.flies[k];
         const before = g.board.slice();
-        const c = await f.choose(g.board, g.me);
+        const c = await f.choose(g.board, g.me, this.explore);
         g.board[c] = g.me; g.last = c; g.moves++;
         const [r, why] = trainerReward(before, c, g.me);
         g.tally[k][1]++; if (r > 0) g.tally[k][0]++;

@@ -29,6 +29,12 @@ let watchPos = null;            // 뉴런 → 감시 목록 위치(-1 = 감시 �
 let watchCounts = null;         // 감시 뉴런별 스파이크 수 (프레임/프로브 단위)
 let probing = false;            // 프로브 중에는 모든 뉴런 발화 수를 센다(가소성용)
 let probeCounts = null;
+// 판 내용에 반응한 입력만 학습: 뉴런마다 '평소' 프로브 발화 수를 지수평균으로 기억하고,
+// 이번 판에서 그보다 더 발화한 만큼만 학습 자격(eligibility)으로 친다. 판 선·배경처럼
+// 늘 들어오는 입력은 자격이 없어져서 '이 칸이 좋다'가 아니라 '이런 판이면 여기'를 배운다.
+let preAvg = null, havePrev = false;
+let covLearn = true;
+const AVG_RATE = 0.05;
 let stimRate = 50;              // Hz, 자극 뉴런의 강제 발화율
 let ethanol = 0;                // 0..1
 let nicotine = 0;               // 0..1 — 니코틴성 ACh 수용체 작용제 근사: 흥분성 시냅스 증폭
@@ -101,7 +107,12 @@ onmessage = (e) => {
     const saved = stimActive;
     stimActive = { probe: { idx: driveSets[m.key], rates: new Float32Array(m.rates) } };
     watchCounts.fill(0);
-    if (m.learn) { if (!probeCounts) probeCounts = new Uint16Array(n); probeCounts.fill(0); probing = true; }
+    if (m.learn) {
+      if (!probeCounts) { probeCounts = new Uint16Array(n); preAvg = new Float32Array(n); }
+      // 직전 프로브를 평소 평균에 접어 넣는다 (지금 판은 평균에 들어가기 전에 비교된다)
+      if (havePrev) for (let i = 0; i < n; i++) preAvg[i] += AVG_RATE * (probeCounts[i] - preAvg[i]);
+      probeCounts.fill(0); probing = true; havePrev = true;
+    }
     for (let t = 0; t < m.ticks; t++) step();
     stimActive = saved;
     if (m.learn) {
@@ -142,6 +153,7 @@ onmessage = (e) => {
     if (m.nicotine !== undefined) nicotine = m.nicotine;
     if (m.speed !== undefined) ticksPerFrame = m.speed;
     if (m.running !== undefined) running = m.running;
+    if (m.covLearn !== undefined) covLearn = m.covLearn;
   } else if (m.type === 'reset') {
     v.fill(0); refr.fill(0); glow.fill(0); ad.fill(0); tick = 0;
   } else if (m.type === 'buffer') {
@@ -152,16 +164,19 @@ onmessage = (e) => {
 let spareBuf = null;
 
 // 3요소 학습(겨냥형): 직전 프로브에서 함께 발화한 (pre → post) 시냅스만,
-// Δw = η · r · √(pre발화·post발화 / 최대) · w. 부호(흥분/억제)는 유지된다.
+// Δw = η · r · √(e_pre·post발화 / 최대) · w. 부호(흥분/억제)는 유지된다.
+// e_pre = 평소보다 더 발화한 만큼(covLearn) 또는 발화 수 그대로(예전 규칙).
 let postMask = null;
 function reinforceCell(post, r, eta) {
   if (!probeCounts || !r) return { changed: 0, total: nChg, meanChange: 0 };
   if (!postMask) postMask = new Uint8Array(n);
   for (const t of post) if (probeCounts[t]) postMask[t] = 1;
+  const elig = i => covLearn ? Math.max(0, probeCounts[i] - preAvg[i]) : probeCounts[i];
   let mx = 0;
   for (let i = 0; i < n; i++) {
-    const ci = probeCounts[i];
-    if (!ci) continue;
+    if (!probeCounts[i]) continue;
+    const ci = elig(i);
+    if (!(ci > 0)) continue;
     for (let j = indptr[i], b = indptr[i + 1]; j < b; j++) {
       const t = targets[j];
       if (postMask[t] && ci * probeCounts[t] > mx) mx = ci * probeCounts[t];
@@ -170,8 +185,9 @@ function reinforceCell(post, r, eta) {
   let changed = 0, sum = 0;
   if (mx > 0) {
     for (let i = 0; i < n; i++) {
-      const ci = probeCounts[i];
-      if (!ci) continue;
+      if (!probeCounts[i]) continue;
+      const ci = elig(i);
+      if (!(ci > 0)) continue;
       for (let j = indptr[i], b = indptr[i + 1]; j < b; j++) {
         const t = targets[j];
         if (!postMask[t]) continue;

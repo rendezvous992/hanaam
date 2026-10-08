@@ -24,50 +24,116 @@ function canvasTexture(w, h, draw, srgb = true) {
 
 const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 
-function abdomenTexture() {
+function abdomenTextures() {
   // 회전체 UV: u는 둘레(0.75 = 등 정중앙), v는 몸축(0 = 꼬리 끝, 1 = 가슴 쪽).
-  // 등판 뒤쪽 가장자리마다 진갈색 띠(배판)가 있고 꼬리로 갈수록 넓고 진하다.
-  return canvasTexture(512, 512, (g, w, h) => {
-    const ventral = [224, 196, 146], dorsal = [190, 138, 70];
+  // 등판(tergite) 뒤쪽 가장자리마다 거무스름한 띠가 있고, 띠 가장자리는 가운데가 앞으로 파인
+  // 물결 모양이다. 띠는 꼬리로 갈수록 넓고 진하다. 큐티클은 얼룩덜룩하고 미세털 점이 촘촘하다.
+  const bands = [[0.08, 0.075, 0.95], [0.2, 0.07, 0.92], [0.34, 0.062, 0.86],
+                 [0.48, 0.052, 0.76], [0.62, 0.042, 0.62], [0.76, 0.032, 0.42]];
+  const dorsOf = x => Math.max(0, Math.cos((x - 0.75) * Math.PI * 2));
+  const map = canvasTexture(512, 512, (g, w, h) => {
+    seed = 4242;
+    const ventral = [220, 192, 136], dorsal = [196, 150, 80];
     for (let x = 0; x < w; x++) {
-      const dors = Math.max(0, Math.cos((x / w - 0.75) * Math.PI * 2));
-      const c = mix(ventral, dorsal, Math.pow(dors, 0.6));
-      g.fillStyle = `rgb(${c})`;
+      const d = dorsOf(x / w);
+      g.fillStyle = `rgb(${mix(ventral, dorsal, Math.pow(d, 0.6))})`;
       g.fillRect(x, 0, 1, h);
-      const bands = [[0.08, 0.07, 0.95], [0.2, 0.065, 0.9], [0.34, 0.06, 0.85],
-                     [0.48, 0.05, 0.75], [0.62, 0.04, 0.6], [0.76, 0.03, 0.4]];
-      for (const [v, bw, a] of bands) {
-        const alpha = a * Math.pow(dors, 0.45);
+    }
+    // 큐티클 얼룩 (부드러운 큰 점)
+    for (let i = 0; i < 500; i++) {
+      const x = rnd() * w, y = rnd() * h, r = 4 + rnd() * 14;
+      g.fillStyle = `rgba(${rnd() < 0.5 ? '120,86,48' : '232,212,170'},${0.04 + rnd() * 0.05})`;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+    for (const [v, bw, a] of bands) {
+      for (let x = 0; x < w; x++) {
+        const d = dorsOf(x / w), alpha = a * Math.pow(d, 0.45);
         if (alpha < 0.02) continue;
-        g.fillStyle = `rgba(52,30,14,${alpha})`;
-        g.fillRect(x, (1 - v - bw) * h, 1, bw * h * 1.15);
+        // 띠 앞가장자리: 등 정중앙에서 앞으로 들어가는 물결 + 잔떨림
+        const notch = 0.35 * bw * Math.exp(-Math.pow((x / w - 0.75) * 9, 2));
+        const wob = bw * 0.12 * Math.sin(x * 0.21) + bw * 0.08 * Math.sin(x * 0.53);
+        const top = (1 - v - bw - wob + notch) * h, bot = (1 - v + bw * 0.12) * h;
+        const grad = g.createLinearGradient(0, top, 0, bot);
+        grad.addColorStop(0, `rgba(58,38,22,0)`);
+        grad.addColorStop(0.2, `rgba(40,24,12,${Math.min(1, alpha * 1.05)})`);
+        grad.addColorStop(1, `rgba(26,15,7,${Math.min(1, alpha * 1.1)})`);
+        g.fillStyle = grad;
+        g.fillRect(x, top, 1, bot - top);
       }
     }
-    // 미세 털(미세강모) 점묘
-    for (let i = 0; i < 2600; i++) {
-      const x = rnd() * w, y = rnd() * h;
-      const dors = Math.max(0, Math.cos((x / w - 0.75) * Math.PI * 2));
-      g.fillStyle = `rgba(60,38,18,${0.08 + dors * 0.18})`;
-      g.fillRect(x, y, 1.5, 1.5);
+    // 미세털 뿌리 점묘
+    for (let i = 0; i < 9000; i++) {
+      const x = rnd() * w, y = rnd() * h, d = dorsOf(x / w);
+      g.fillStyle = `rgba(40,26,14,${0.06 + d * 0.16})`;
+      g.fillRect(x, y, 1.2, 1.2);
     }
   });
+  const bump = canvasTexture(512, 512, (g, w, h) => {
+    seed = 99;
+    g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
+    // 마디 사이 이음매(골)와 등판 뒤 가장자리의 턱
+    for (const [v, bw] of bands) {
+      const y = (1 - v + bw * 0.12) * h;
+      const grad = g.createLinearGradient(0, y - 10, 0, y + 6);
+      grad.addColorStop(0, 'rgba(255,255,255,0.0)'); grad.addColorStop(0.6, 'rgba(255,255,255,0.35)');
+      grad.addColorStop(0.75, 'rgba(0,0,0,0.6)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad; g.fillRect(0, y - 10, w, 16);
+    }
+    for (let i = 0; i < 12000; i++) {
+      g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)';
+      g.fillRect(rnd() * w, rnd() * h, 1.3, 1.3);
+    }
+  }, false);
+  return { map, bump };
 }
 
 function thoraxTextures() {
-  // 구 UV: 캔버스 위쪽이 등. 등은 짙은 호박색, 옆·배 쪽으로 밝아진다.
+  // 구 UV: 캔버스 위쪽이 등, 가로 = 둘레(0.5 근처가 앞, 등 정중앙은 세로선 x=w*0.5 부근).
+  // 등은 회갈색 가루가 덮인 금갈색, 옆·배 쪽으로 밝아진다. 등에는 흐린 세로줄(vittae)과
+  // 줄지어 난 미세털 구멍이 있다.
   const draw = (g, w, h, bumpOnly) => {
+    seed = 777;
     if (bumpOnly) { g.fillStyle = '#808080'; g.fillRect(0, 0, w, h); }
     else {
       const grad = g.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#7a4018'); grad.addColorStop(0.35, '#985624');
-      grad.addColorStop(0.62, '#b7783a'); grad.addColorStop(1, '#d8b077');
+      grad.addColorStop(0, '#6e4f2e'); grad.addColorStop(0.3, '#86602f');
+      grad.addColorStop(0.6, '#a98049'); grad.addColorStop(1, '#cfb07c');
       g.fillStyle = grad; g.fillRect(0, 0, w, h);
+      // 회색 가루 얼룩
+      for (let i = 0; i < 260; i++) {
+        const x = rnd() * w, y = rnd() * h * 0.7, r = 6 + rnd() * 18;
+        g.fillStyle = `rgba(150,140,120,${0.04 + rnd() * 0.06})`;
+        g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+      }
+      // 등의 흐린 세로줄(앞뒤로 달리는 4줄): 픽셀마다 구 위의 3D 위치를 구해 좌우 위치 z로 칠한다
+      // (SphereGeometry: x = -cos(2πu)·sinφ, y = cosφ, z = sin(2πu)·sinφ, φ = 캔버스 위에서부터 각도)
+      const img = g.getImageData(0, 0, w, h), d = img.data;
+      for (let py = 0; py < h * 0.45; py++) {
+        const phi = py / h * Math.PI, sy = Math.cos(phi), sp = Math.sin(phi);
+        for (let px = 0; px < w; px++) {
+          const z = Math.sin(px / w * Math.PI * 2) * sp;
+          let k = 0;
+          for (const zc of [-0.3, -0.11, 0.11, 0.3]) k = Math.max(k, Math.exp(-Math.pow((z - zc) / 0.045, 2)));
+          k *= Math.min(1, Math.max(0, (sy - 0.25) / 0.35)) * 0.22;
+          const q = (py * w + px) * 4;
+          d[q] *= 1 - k; d[q + 1] *= 1 - k * 1.05; d[q + 2] *= 1 - k * 1.1;
+        }
+      }
+      g.putImageData(img, 0, 0);
     }
-    seed = 777;
-    for (let i = 0; i < 2200; i++) {
-      const x = rnd() * w, y = Math.pow(rnd(), 1.4) * h * 0.75;
-      g.fillStyle = bumpOnly ? `rgba(255,255,255,0.35)` : `rgba(60,30,10,${0.05 + rnd() * 0.09})`;
-      g.beginPath(); g.arc(x, y, 0.6 + rnd() * 0.5, 0, Math.PI * 2); g.fill();
+    // 미세털 구멍: 줄지어(행) 흩어진 점
+    for (let row = 0; row < 26; row++) {
+      const y = (0.04 + row * 0.024) * h;
+      for (let i = 0; i < 70; i++) {
+        const x = (i + rnd() * 0.6) / 70 * w, yy = y + (rnd() - 0.5) * 4;
+        g.fillStyle = bumpOnly ? 'rgba(0,0,0,0.3)' : `rgba(52,34,16,${0.06 + rnd() * 0.08})`;
+        g.beginPath(); g.arc(x, yy, 0.6 + rnd() * 0.4, 0, Math.PI * 2); g.fill();
+      }
+    }
+    for (let i = 0; i < 6000; i++) {
+      g.fillStyle = bumpOnly ? (rnd() < 0.5 ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)')
+                             : `rgba(${rnd() < 0.5 ? '60,40,20' : '200,180,140'},${0.04 + rnd() * 0.05})`;
+      g.fillRect(rnd() * w, rnd() * h, 1.2, 1.2);
     }
   };
   return {
@@ -80,7 +146,7 @@ function eyeTextures() {
   // 겹눈: 육각 낱눈 격자 범프 + 중심이 밝은 진홍색
   const bump = canvasTexture(512, 512, (g, w, h) => {
     g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
-    const s = 10;
+    const s = 7;
     for (let row = 0; row * s * 0.866 < h + s; row++) {
       for (let col = 0; col * s < w + s; col++) {
         const cx = col * s + (row % 2) * s / 2, cy = row * s * 0.866;
@@ -92,13 +158,38 @@ function eyeTextures() {
     }
   }, false);
   bump.wrapS = bump.wrapT = THREE.RepeatWrapping;
-  bump.repeat.set(3, 2);
-  const map = canvasTexture(64, 256, (g, w, h) => {
+  bump.repeat.set(4, 3);
+  const map = canvasTexture(256, 512, (g, w, h) => {
+    // 짙은 진홍 — 가장자리로 갈수록 검붉게, 낱눈마다 밝기가 조금씩 다르다
     const grad = g.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#e2341c'); grad.addColorStop(0.45, '#b81c10');
-    grad.addColorStop(1, '#5e0a06');
+    grad.addColorStop(0, '#b8281a'); grad.addColorStop(0.45, '#8e1810');
+    grad.addColorStop(1, '#3e0806');
     g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    seed = 31;
+    const s = 5;
+    for (let row = 0; row * s * 0.866 < h + s; row++) for (let col = 0; col * s < w + s; col++) {
+      const cx = col * s + (row % 2) * s / 2, cy = row * s * 0.866;
+      g.fillStyle = rnd() < 0.5 ? `rgba(255,120,90,${rnd() * 0.12})` : `rgba(20,0,0,${rnd() * 0.18})`;
+      g.beginPath(); g.arc(cx, cy, s * 0.45, 0, Math.PI * 2); g.fill();
+    }
   });
+  return { map, bump };
+}
+
+function legTextures() {
+  // 원기둥 UV: u = 둘레, v = 길이. 짧은 털이 비스듬히 줄지어 있다.
+  const draw = (g, w, h, bumpOnly) => {
+    seed = 1234;
+    g.fillStyle = bumpOnly ? '#808080' : '#9a6e3a'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 700; i++) {
+      const x = rnd() * w, y = rnd() * h, l = 3 + rnd() * 4;
+      g.strokeStyle = bumpOnly ? 'rgba(255,255,255,0.35)' : `rgba(50,30,12,${0.1 + rnd() * 0.14})`;
+      g.lineWidth = 0.6;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + l * 0.25, y + l); g.stroke();
+    }
+  };
+  const map = canvasTexture(64, 256, (g, w, h) => draw(g, w, h, false));
+  const bump = canvasTexture(64, 256, (g, w, h) => draw(g, w, h, true), false);
   return { map, bump };
 }
 
@@ -128,6 +219,12 @@ function wingTexture() {
     ir.addColorStop(0.55, 'rgba(120,255,190,0.10)'); ir.addColorStop(0.8, 'rgba(110,180,255,0.12)');
     ir.addColorStop(1, 'rgba(190,130,255,0.10)');
     g.fillStyle = ir; g.fillRect(0, 0, w, h);
+    // 날개막의 미세털(microtrichia): 아주 작은 점이 고르게
+    seed = 555;
+    for (let i = 0; i < 14000; i++) {
+      g.fillStyle = `rgba(90,80,70,${0.08 + rnd() * 0.1})`;
+      g.fillRect(rnd() * w, rnd() * h, 1.1, 1.1);
+    }
     g.restore();
     // 시맥: 앞가장자리(costa), 종맥 L1~L6, 앞·뒤 횡맥
     g.lineCap = 'round';
@@ -204,27 +301,35 @@ export function buildFlyModel(renderer) {
     return m;
   };
 
+  // 재질: 곤충 큐티클은 유광 플라스틱이 아니라 미세털이 덮인 반무광 표면이다.
+  // 유광 코팅(clearcoat)은 거의 빼고, 비스듬히 볼 때 은은하게 빛나는 sheen으로 솜털 느낌을 낸다.
   const thx = thoraxTextures();
+  const abd = abdomenTextures();
   const eye = eyeTextures();
+  const legT = legTextures();
   const mats = {
-    abd: new THREE.MeshPhysicalMaterial({ map: abdomenTexture(), roughness: 0.5,
-      clearcoat: 0.35, clearcoatRoughness: 0.45, envMap: env, envMapIntensity: 0.55 }),
-    thx: new THREE.MeshPhysicalMaterial({ map: thx.map, bumpMap: thx.bump, bumpScale: 0.003,
-      roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.3, envMap: env, envMapIntensity: 0.6 }),
-    head: new THREE.MeshPhysicalMaterial({ color: srgb(0x8a5426), roughness: 0.55, clearcoat: 0.15,
-      clearcoatRoughness: 0.5, envMap: env, envMapIntensity: 0.25 }),
-    frons: new THREE.MeshPhysicalMaterial({ color: srgb(0xa04e18), roughness: 0.6, envMap: env, envMapIntensity: 0.2 }),
-    eye: new THREE.MeshPhysicalMaterial({ map: eye.map, bumpMap: eye.bump, bumpScale: 0.01,
-      roughness: 0.38, clearcoat: 1, clearcoatRoughness: 0.12, emissive: srgb(0x2a0402),
-      envMap: env, envMapIntensity: 1.0 }),
-    bristle: new THREE.MeshStandardMaterial({ color: srgb(0x1c120a), roughness: 0.55 }),
-    leg: new THREE.MeshPhysicalMaterial({ color: srgb(0x7a4a20), roughness: 0.55, clearcoat: 0.1,
-      clearcoatRoughness: 0.5, envMap: env, envMapIntensity: 0.25 }),
-    tarsus: new THREE.MeshPhysicalMaterial({ color: srgb(0x5e3a1a), roughness: 0.55, envMap: env, envMapIntensity: 0.2 }),
+    abd: new THREE.MeshPhysicalMaterial({ map: abd.map, bumpMap: abd.bump, bumpScale: 0.006, roughness: 0.66,
+      sheen: srgb(0x4a3a28), envMap: env, envMapIntensity: 0.35 }),
+    thx: new THREE.MeshPhysicalMaterial({ map: thx.map, bumpMap: thx.bump, bumpScale: 0.005,
+      roughness: 0.6, clearcoat: 0.08, clearcoatRoughness: 0.6, sheen: srgb(0x6a5a44),
+      envMap: env, envMapIntensity: 0.4 }),
+    head: new THREE.MeshPhysicalMaterial({ color: srgb(0x8c6436), roughness: 0.66, sheen: srgb(0x4a3a28),
+      envMap: env, envMapIntensity: 0.25 }),
+    frons: new THREE.MeshPhysicalMaterial({ color: srgb(0x9a5a2c), roughness: 0.7, sheen: srgb(0x3a2a1a),
+      envMap: env, envMapIntensity: 0.2 }),
+    eye: new THREE.MeshPhysicalMaterial({ map: eye.map, bumpMap: eye.bump, bumpScale: 0.006,
+      roughness: 0.55, clearcoat: 0.18, clearcoatRoughness: 0.4, emissive: srgb(0x100201),
+      envMap: env, envMapIntensity: 0.4 }),
+    bristle: new THREE.MeshStandardMaterial({ color: srgb(0x1c120a), roughness: 0.6 }),
+    hair: new THREE.MeshStandardMaterial({ color: srgb(0x2a1a0c), roughness: 0.65 }),
+    leg: new THREE.MeshPhysicalMaterial({ map: legT.map, bumpMap: legT.bump, bumpScale: 0.004, roughness: 0.66,
+      sheen: srgb(0x3a2a1a), envMap: env, envMapIntensity: 0.25 }),
+    tarsus: new THREE.MeshPhysicalMaterial({ color: srgb(0x5a3a1c), roughness: 0.66, sheen: srgb(0x2a1c10),
+      envMap: env, envMapIntensity: 0.2 }),
     claw: new THREE.MeshStandardMaterial({ color: srgb(0x24170c), roughness: 0.5 }),
     wing: new THREE.MeshPhysicalMaterial({ map: wingTexture(), transparent: true, side: THREE.DoubleSide,
-      depthWrite: false, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08,
-      envMap: env, envMapIntensity: 0.9, alphaTest: 0.01 }),
+      depthWrite: false, roughness: 0.3, clearcoat: 0.35, clearcoatRoughness: 0.3,
+      envMap: env, envMapIntensity: 0.6, alphaTest: 0.01 }),
   };
 
   // ── 가슴: 앞쪽 등이 솟은 혹 모양 ─────────────
@@ -332,6 +437,65 @@ export function buildFlyModel(renderer) {
     addBristle(head, V3(-0.02, 0.4, sz * 0.12), V3(-0.6, 1, sz * 0.4), 0.24);
     addBristle(head, V3(0.06, 0.36, sz * 0.24), V3(-0.5, 1, sz * 0.7), 0.2);
     addBristle(head, V3(0.14, 0.32, sz * 0.28), V3(0.4, 1, sz * 0.5), 0.16);
+  }
+
+  // ── 미세털(microchaetae): 짧고 가는 털을 가슴·배·머리에 촘촘히, 뒤쪽으로 눕혀서 ──
+  const hairGeo = new THREE.CylinderGeometry(0.001, 0.0042, 1, 4);
+  hairGeo.translate(0, 0.5, 0);
+  const dummy = new THREE.Object3D();
+  const hairs = (parent, list) => {
+    const im = new THREE.InstancedMesh(hairGeo, mats.hair, list.length);
+    list.forEach(([p, dir, len], i) => {
+      dummy.position.copy(p);
+      dummy.quaternion.setFromUnitVectors(UP, dir.normalize());
+      dummy.scale.set(1, len, 1);
+      dummy.updateMatrix();
+      im.setMatrixAt(i, dummy.matrix);
+    });
+    parent.add(im);
+    return im;
+  };
+  seed = 8080;
+  {
+    const list = [];
+    for (let i = 0; i < 320; i++) {
+      const nx = -0.55 + rnd() * 1.35, nz = (rnd() * 2 - 1) * 0.85;
+      if (nx * nx + nz * nz > 0.9) continue;
+      const [p, n] = onThorax(nx, nz);
+      list.push([p, n.multiplyScalar(0.22).add(V3(-1, 0.05, -nz * 0.15)), 0.035 + rnd() * 0.035]);
+    }
+    hairs(body, list);
+  }
+  {
+    // 배: 등판마다 뒤 가장자리 앞쪽에 털이 줄지어 난다 (배 메시의 로컬 좌표)
+    const rAt = a => {                       // 몸축 a(꼬리 끝 0 → 가슴 2.26)에서의 반지름
+      for (let i = 1; i < prof.length; i++) if (prof[i].y >= a) {
+        const t = (a - prof[i - 1].y) / Math.max(1e-6, prof[i].y - prof[i - 1].y);
+        return prof[i - 1].x + (prof[i].x - prof[i - 1].x) * t;
+      }
+      return 0;
+    };
+    const list = [];
+    for (let i = 0; i < 360; i++) {
+      const a = (0.08 + rnd() * 0.86) * 2.26, psi = (rnd() * 2 - 1) * 1.7;
+      const r = rAt(a);
+      if (r < 0.08) continue;
+      const p = V3(a - 2.26, r * Math.cos(psi), r * Math.sin(psi));
+      const n = V3(0, Math.cos(psi), Math.sin(psi));
+      list.push([p, n.multiplyScalar(0.25).add(V3(-1, 0, 0)), 0.02 + rnd() * 0.025]);
+    }
+    hairs(abdomen, list);
+  }
+  {
+    const list = [];
+    for (let i = 0; i < 90; i++) {
+      const th = rnd() * Math.PI * 2, y = 0.25 + rnd() * 0.75, rr = Math.sqrt(1 - y * y);
+      const d = V3(-Math.abs(Math.cos(th)) * rr, y, Math.sin(th) * rr);
+      if (Math.abs(d.z) > 0.55) continue;      // 겹눈 위는 피한다
+      const p = V3(d.x * 0.3, d.y * 0.44, d.z * 0.47);
+      list.push([p, d.clone().multiplyScalar(0.6).add(V3(-0.6, 0.4, 0)), 0.04 + rnd() * 0.04]);
+    }
+    hairs(head, list);
   }
 
   // ── 평형곤: 날개 뒤의 작은 곤봉 ──
