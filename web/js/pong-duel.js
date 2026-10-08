@@ -197,8 +197,8 @@ export class PongDuel {
         await onPoint?.(played);
       }
       const head = mode === 'train'
-        ? (points === Infinity ? `♾️ 무한 조련 ${played}점째 · 분당 ${Math.round(played / ((performance.now() - t0) / 60000) || 0)}점` : `🎓 조련 ${Math.min(played + 1, points)}/${points}점`)
-        : mode === 'human' ? `🧑 나(위) vs ${a.flies.A.name}(아래)` : '▶ 대결 (5점 먼저)';
+        ? (points === Infinity ? `무한 조련 ${played}점째 · 분당 ${Math.round(played / ((performance.now() - t0) / 60000) || 0)}점` : `조련 ${Math.min(played + 1, points)}/${points}점`)
+        : mode === 'human' ? `나(위) vs ${a.flies.A.name}(아래)` : '대결 (5점 먼저)';
       a.say(`${head} · ${a.flies.A.name} ${this.score.A} : ${this.score.B} ${a.flies.B.name}${this.note}`);
       if (ev.length) a.updateCards();
       if (mode === 'train' ? played >= points : Math.max(this.score.A, this.score.B) >= WIN_POINTS) break;

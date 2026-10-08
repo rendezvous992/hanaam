@@ -45,7 +45,7 @@ function abdomenTextures() {
   const dorsOf = x => Math.max(0, Math.cos((x - 0.75) * Math.PI * 2));
   const map = canvasTexture(512, 512, (g, w, h) => {
     seed = 4242;
-    const ventral = [206, 180, 128], dorsal = [180, 134, 70];
+    const ventral = [208, 192, 156], dorsal = [168, 126, 70];
     for (let x = 0; x < w; x++) {
       const d = dorsOf(x / w);
       g.fillStyle = `rgb(${mix(ventral, dorsal, Math.pow(d, 0.6))})`;
@@ -125,13 +125,13 @@ function thoraxTextures() {
     if (bumpOnly) { g.fillStyle = '#808080'; g.fillRect(0, 0, w, h); }
     else {
       const grad = g.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#6e4f2e'); grad.addColorStop(0.3, '#86602f');
-      grad.addColorStop(0.6, '#a98049'); grad.addColorStop(1, '#cfb07c');
+      grad.addColorStop(0, '#5f5040'); grad.addColorStop(0.3, '#73603f');
+      grad.addColorStop(0.6, '#93784f'); grad.addColorStop(1, '#bba27a');
       g.fillStyle = grad; g.fillRect(0, 0, w, h);
       // 회색 가루 얼룩
       for (let i = 0; i < 260; i++) {
         const x = rnd() * w, y = rnd() * h * 0.7, r = 6 + rnd() * 18;
-        g.fillStyle = `rgba(150,140,120,${0.04 + rnd() * 0.06})`;
+        g.fillStyle = `rgba(150,145,132,${0.06 + rnd() * 0.08})`;
         g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
       }
       // 등의 흐린 세로줄(앞뒤로 달리는 4줄): 픽셀마다 구 위의 3D 위치를 구해 좌우 위치 z로 칠한다
@@ -209,7 +209,7 @@ function legTextures() {
   // 원기둥 UV: u = 둘레, v = 길이. 짧은 털이 비스듬히 줄지어 있다.
   const draw = (g, w, h, bumpOnly) => {
     seed = 1234;
-    g.fillStyle = bumpOnly ? '#808080' : '#9a6e3a'; g.fillRect(0, 0, w, h);
+    g.fillStyle = bumpOnly ? '#808080' : '#a5875c'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 700; i++) {
       const x = rnd() * w, y = rnd() * h, l = 3 + rnd() * 4;
       g.strokeStyle = bumpOnly ? 'rgba(255,255,255,0.35)' : `rgba(50,30,12,${0.1 + rnd() * 0.14})`;
@@ -343,7 +343,7 @@ export function buildFlyModel(renderer) {
     thx: new THREE.MeshPhysicalMaterial({ map: thx.map, bumpMap: thx.bump, bumpScale: 0.005,
       roughness: 0.6, clearcoat: 0.08, clearcoatRoughness: 0.6, sheen: srgb(0x6a5a44),
       envMap: env, envMapIntensity: 0.4 }),
-    head: new THREE.MeshPhysicalMaterial({ color: srgb(0x8c6436), roughness: 0.66, sheen: srgb(0x4a3a28),
+    head: new THREE.MeshPhysicalMaterial({ color: srgb(0x7a6040), roughness: 0.66, sheen: srgb(0x4a3a28),
       envMap: env, envMapIntensity: 0.25 }),
     frons: new THREE.MeshPhysicalMaterial({ color: srgb(0x9a5a2c), roughness: 0.7, sheen: srgb(0x3a2a1a),
       envMap: env, envMapIntensity: 0.2 }),
@@ -354,7 +354,7 @@ export function buildFlyModel(renderer) {
     hair: new THREE.MeshStandardMaterial({ color: srgb(0x2a1a0c), roughness: 0.65 }),
     leg: new THREE.MeshPhysicalMaterial({ map: legT.map, bumpMap: legT.bump, bumpScale: 0.004, roughness: 0.66,
       sheen: srgb(0x3a2a1a), envMap: env, envMapIntensity: 0.25 }),
-    tarsus: new THREE.MeshPhysicalMaterial({ color: srgb(0x5a3a1c), roughness: 0.66, sheen: srgb(0x2a1c10),
+    tarsus: new THREE.MeshPhysicalMaterial({ color: srgb(0x6a5236), roughness: 0.66, sheen: srgb(0x2a1c10),
       envMap: env, envMapIntensity: 0.2 }),
     claw: new THREE.MeshStandardMaterial({ color: srgb(0x24170c), roughness: 0.5 }),
     wing: new THREE.MeshPhysicalMaterial({ map: wingTexture(), transparent: true, side: THREE.DoubleSide,
@@ -482,27 +482,34 @@ export function buildFlyModel(renderer) {
 
   // ── 미세털(microchaetae): 짧고 아주 가는 털을 가슴·배·머리에 촘촘히, 뒤쪽으로 눕혀서.
   //   실제 굵기는 수 μm라 화면에서는 1픽셀보다 가늘다 — 굵기 있는 메시 대신 반투명 1픽셀 선으로 그린다.
-  const hairs = (parent, list, opacity = 0.55) => {
-    const pos = new Float32Array(list.length * 6);
+  const hairMat = opacity => new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(0x2a2014) }, opacity: { value: opacity } },
+    vertexShader: 'attribute float tip; varying float vTip; void main() { vTip = tip; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform vec3 color; uniform float opacity; varying float vTip; void main() { gl_FragColor = vec4(color, opacity * (1.0 - vTip) * (1.0 - vTip)); }',
+    transparent: true, depthWrite: false,
+  });
+  const hairs = (parent, list, opacity = 0.32) => {
+    const pos = new Float32Array(list.length * 6), tip = new Float32Array(list.length * 2);
     list.forEach(([p, dir, len], i) => {
       const q = p.clone().addScaledVector(dir.normalize(), len);
       pos.set([p.x, p.y, p.z, q.x, q.y, q.z], i * 6);
+      tip[i * 2 + 1] = 1;
     });
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const ls = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
-      color: mats.hair.color, transparent: true, opacity, depthWrite: false }));
+    geo.setAttribute('tip', new THREE.BufferAttribute(tip, 1));
+    const ls = new THREE.LineSegments(geo, hairMat(opacity));
     parent.add(ls);
     return ls;
   };
   seed = 8080;
   {
     const list = [];
-    for (let i = 0; i < 900; i++) {
+    for (let i = 0; i < 2200; i++) {
       const nx = -0.55 + rnd() * 1.35, nz = (rnd() * 2 - 1) * 0.85;
       if (nx * nx + nz * nz > 0.9) continue;
       const [p, n] = onThorax(nx, nz);
-      list.push([p, n.multiplyScalar(0.22).add(V3(-1, 0.05, -nz * 0.15)), 0.035 + rnd() * 0.035]);
+      list.push([p, n.multiplyScalar(0.3 + rnd() * 0.3).add(V3(-1, 0.05, -nz * 0.15 + (rnd() - 0.5) * 0.4)), 0.018 + rnd() * 0.022]);
     }
     hairs(body, list);
   }
@@ -516,7 +523,7 @@ export function buildFlyModel(renderer) {
       return 0;
     };
     const list = [];
-    for (let i = 0; i < 1400; i++) {
+    for (let i = 0; i < 3000; i++) {
       // 등판마다 뒤 가장자리 쪽에 더 촘촘하다
       const [b, bw] = ABD_BANDS[Math.floor(rnd() * ABD_BANDS.length)];
       const v = rnd() < 0.6 ? b + rnd() * bw * 1.6 : 0.06 + rnd() * 0.86;
@@ -527,18 +534,18 @@ export function buildFlyModel(renderer) {
       const p = V3(a - 2.26, r * Math.cos(psi), r * Math.sin(psi));
       const n = V3(0, Math.cos(psi), Math.sin(psi));
       const side = V3(0, -Math.sin(psi), Math.cos(psi)).multiplyScalar((rnd() - 0.5) * 0.5);
-      list.push([p, n.multiplyScalar(0.55 + rnd() * 0.3).add(V3(-1, 0, 0)).add(side), 0.03 + rnd() * 0.03]);
+      list.push([p, n.multiplyScalar(0.55 + rnd() * 0.3).add(V3(-1, 0, 0)).add(side), 0.016 + rnd() * 0.02]);
     }
-    hairs(abdomen, list, 0.4);
+    hairs(abdomen, list, 0.3);
   }
   {
     const list = [];
-    for (let i = 0; i < 220; i++) {
+    for (let i = 0; i < 500; i++) {
       const th = rnd() * Math.PI * 2, y = 0.25 + rnd() * 0.75, rr = Math.sqrt(1 - y * y);
       const d = V3(-Math.abs(Math.cos(th)) * rr, y, Math.sin(th) * rr);
       if (Math.abs(d.z) > 0.55) continue;      // 겹눈 위는 피한다
       const p = V3(d.x * 0.3, d.y * 0.44, d.z * 0.47);
-      list.push([p, d.clone().multiplyScalar(0.6).add(V3(-0.6, 0.4, 0)), 0.04 + rnd() * 0.04]);
+      list.push([p, d.clone().multiplyScalar(0.6).add(V3(-0.6, 0.4, 0)), 0.02 + rnd() * 0.025]);
     }
     hairs(head, list);
   }
@@ -589,7 +596,31 @@ export function buildFlyModel(renderer) {
   return { body, head, probG, probLab, wings, mats, legDefs: LEG_DEFS };
 }
 
-// ── 다리 리그: 월드 공간 2관절 IK ─────────────────
+// 다리가 뚫고 지나가면 안 되는 몸 부위(몸 로컬 좌표의 타원체 = 중심, 반지름).
+// 머리 그룹 위치 (1.38, 0.7, 0) 기준의 두개·겹눈·이마와 가슴. 겹눈은 x축으로 90° 돌린 구라
+// 반지름이 (0.26, 0.41, 0.2)가 된다. ankleOnly: 가슴은 다리가 붙는 곳이라 무릎·넓적다리는 빼고
+// 발목·종아리·발목마디만 검사한다.
+const LEG_COLLIDERS = [
+  { c: V3(1.38, 0.7, 0), r: V3(0.3, 0.44, 0.47) },
+  { c: V3(1.44, 0.73, 0.32), r: V3(0.26, 0.41, 0.2) },
+  { c: V3(1.44, 0.73, -0.32), r: V3(0.26, 0.41, 0.2) },
+  { c: V3(1.63, 0.76, 0), r: V3(0.09, 0.3, 0.17) },
+  { c: V3(0.45, 0.66, 0), r: V3(0.7, 0.6, 0.54), ankleOnly: true },
+];
+const LEG_MARGIN = 0.035;          // 다리 두께만큼 띄운다
+
+// 타원체 밖으로 밀어낸다 (안에 있으면 중심에서 바깥 방향으로 표면까지). 움직였으면 true
+function pushOut(p, col) {
+  const rx = col.r.x + LEG_MARGIN, ry = col.r.y + LEG_MARGIN, rz = col.r.z + LEG_MARGIN;
+  const qx = (p.x - col.c.x) / rx, qy = (p.y - col.c.y) / ry, qz = (p.z - col.c.z) / rz;
+  const d = Math.hypot(qx, qy, qz);
+  if (d >= 1) return false;
+  if (d < 1e-5) { p.z = col.c.z + (p.z >= col.c.z ? 1 : -1) * rz; return true; }
+  p.set(col.c.x + qx / d * rx, col.c.y + qy / d * ry, col.c.z + qz / d * rz);
+  return true;
+}
+
+// ── 다리 리그: 월드 공간 2관절 IK + 몸과의 충돌 ─────────────
 export class LegRig {
   constructor(scene, mats) {
     this.root = new THREE.Group();
@@ -608,6 +639,19 @@ export class LegRig {
       this.root.add(m);
       return m;
     };
+    // 발톱: 발끝에서 앞으로 굽은 아주 작은 갈고리 두 개
+    const clawGeo = new THREE.ConeGeometry(0.008, 0.06, 5);
+    clawGeo.translate(0, 0.03, 0);
+    const claw = mat => {
+      const g = new THREE.Group();
+      for (const sz of [-1, 1]) {
+        const c = new THREE.Mesh(clawGeo, mat);
+        c.rotation.set(sz * 0.35, 0, -0.5);
+        g.add(c);
+      }
+      this.root.add(g);
+      return g;
+    };
     this.legs = [];
     for (const side of [-1, 1]) {
       for (const d of LEG_DEFS) {
@@ -622,14 +666,14 @@ export class LegRig {
           // 삼각보행: 왼앞·오중·왼뒤 / 오앞·왼중·오뒤
           gaitOff: ((d.idx % 2 === 0) === (side < 0)) ? 0 : 0.5,
           target: V3(),
-          coxa: seg(0.085 * s, 0.07 * s, mats.leg),
-          femur: seg(0.068 * s, 0.05 * s, mats.leg),
-          tibia: seg(0.046 * s, 0.032 * s, mats.leg),
-          tarsus: seg(0.03, 0.016, mats.tarsus),
-          jHip: joint(0.07 * s, mats.leg),
-          jKnee: joint(0.052 * s, mats.leg),
-          jAnkle: joint(0.035, mats.tarsus),
-          claw: joint(0.028, mats.claw),
+          coxa: seg(0.062 * s, 0.05 * s, mats.leg),
+          femur: seg(0.046 * s, 0.034 * s, mats.leg),
+          tibia: seg(0.03 * s, 0.024 * s, mats.leg),
+          tarsus: seg(0.019, 0.011, mats.tarsus),
+          jHip: joint(0.046 * s, mats.leg),
+          jKnee: joint(0.03 * s, mats.leg),
+          jAnkle: joint(0.02, mats.tarsus),
+          claw: claw(mats.claw),
         });
       }
     }
@@ -641,6 +685,44 @@ export class LegRig {
     mesh.position.copy(a);
     mesh.quaternion.setFromUnitVectors(UP, d.divideScalar(len));
     mesh.scale.set(1, len, 1);
+  }
+
+  // 위치 기반 제약 풀이: 무릎·발목과 마디 위의 점들이 머리·눈·가슴 안에 들어가면 밖으로 밀고,
+  // 넓적다리·종아리 길이를 다시 맞추기를 반복한다. 엉덩이(H)와 발끝(F)은 고정.
+  collide(body, g, H, K, Ae, F) {
+    const inv = this._inv || (this._inv = new THREE.Matrix4());
+    inv.copy(body.matrixWorld).invert();
+    const P = [H, K, Ae, F].map(p => p.clone().applyMatrix4(inv));
+    const s = V3(), s0 = V3(), d = V3(), tmp = V3();
+    let hit = false;
+    for (let it = 0; it < 8; it++) {
+      let moved = false;
+      for (const col of LEG_COLLIDERS) {
+        if (!col.ankleOnly && pushOut(P[1], col)) moved = true;
+        if (pushOut(P[2], col)) moved = true;
+        for (let a = col.ankleOnly ? 1 : 0; a < 3; a++) {
+          for (const t of [0.25, 0.5, 0.75]) {
+            s.copy(P[a]).lerp(P[a + 1], t); s0.copy(s);
+            if (!pushOut(s, col)) continue;
+            moved = true;
+            d.subVectors(s, s0);
+            const fa = a > 0, fb = a + 1 < 3;          // 고정점(H, F)은 움직이지 않는다
+            const wa = fa ? 1 - t : 0, wb = fb ? t : 0, n = wa * wa + wb * wb;
+            if (n < 1e-6) continue;
+            if (fa) P[a].addScaledVector(d, wa / n);
+            if (fb) P[a + 1].addScaledVector(d, wb / n);
+          }
+        }
+      }
+      if (!moved) break;
+      hit = true;
+      // 마디 길이 복원: H→K는 넓적다리, K→Ae는 종아리 길이
+      tmp.subVectors(P[1], P[0]).setLength(g.l1); P[1].copy(P[0]).add(tmp);
+      tmp.subVectors(P[2], P[1]).setLength(g.l2); P[2].copy(P[1]).add(tmp);
+    }
+    if (!hit) return;
+    K.copy(P[1]).applyMatrix4(body.matrixWorld);
+    Ae.copy(P[2]).applyMatrix4(body.matrixWorld);
   }
 
   // body.matrixWorld가 최신이어야 한다. 각 다리의 target(월드)을 미리 채워둘 것.
@@ -667,6 +749,7 @@ export class LegRig {
       const a = Math.acos(cosA);
       const K = H.clone().addScaledVector(u, g.l1 * Math.cos(a)).addScaledVector(pole, g.l1 * Math.sin(a));
       const Ae = H.clone().addScaledVector(u, D);
+      this.collide(body, g, H, K, Ae, F);
       LegRig.place(g.coxa, A, H);
       LegRig.place(g.femur, H, K);
       LegRig.place(g.tibia, K, Ae);
@@ -675,6 +758,7 @@ export class LegRig {
       g.jKnee.position.copy(K);
       g.jAnkle.position.copy(Ae);
       g.claw.position.copy(F);
+      g.claw.quaternion.copy(g.tarsus.quaternion);
     }
   }
 }

@@ -142,13 +142,14 @@ async function main() {
 
     // ── 자극 프리셋 버튼 ───────────────────────────────
     const stimBox = $('stimuli');
-    const EMOJI = { sugar: '🍬', bitter: '☕', smell: '👃', sight: '💡',
-                    sound: '🔊', temp: '🌡️', humid: '💧', touch: '🖐️' };
     for (const [key, p] of Object.entries(meta.presets)) {
       if (!p.idx.length) continue;
       const b = document.createElement('button');
       b.className = 'stim';
-      b.innerHTML = `${EMOJI[key] || '⚡'} ${p.name_ko}<span>${p.idx.length.toLocaleString()}개</span>`;
+      // 이름 '설탕맛 (당분 GRN)' → 큰 글씨 '설탕맛', 작은 줄 '당분 GRN · 뉴런 23개' (버튼 폭을 넘지 않게)
+      const m = p.name_ko.match(/^(.*?)\s*\((.*)\)\s*$/);
+      const main = m ? m[1] : p.name_ko, detail = m ? `<em>${m[2]}</em> · ` : '';
+      b.innerHTML = `${main}<span>${detail}<em>${p.idx.length.toLocaleString()}개</em></span>`;
       b.onclick = () => {
         const on = !b.classList.contains('on');
         b.classList.toggle('on', on);
@@ -160,10 +161,10 @@ async function main() {
     // ── 행동 제어: 명령 뉴런 자극 (꾹 누르는 동안) ──────
     const cmdBox = $('commands');
     const CMDS = [
-      ['fwd', '⏩ 전진', 'DNp09 ×' + readouts[0].length],
-      ['back', '🕺 문워크', 'MDN ×' + readouts[1].length],
-      ['jump', '⚡ 점프', 'Giant Fiber ×' + readouts[2].length],
-      ['prob', '👅 주둥이', '운동뉴런 ×' + readouts[3].length],
+      ['fwd', '전진', 'DNp09 ×' + readouts[0].length],
+      ['back', '문워크', 'MDN ×' + readouts[1].length],
+      ['jump', '점프', 'Giant Fiber ×' + readouts[2].length],
+      ['prob', '주둥이', '운동뉴런 ×' + readouts[3].length],
     ];
     CMDS.forEach(([key, label, sub], i) => {
       const b = document.createElement('button');
@@ -211,7 +212,7 @@ async function main() {
     let running = true;
     $('pause').onclick = () => {
       running = !running;
-      $('pause').textContent = running ? '⏸ 일시정지' : '▶ 재생';
+      $('pause').textContent = running ? '일시정지' : '재생';
       send({ running });
     };
     $('reset').onclick = () => worker.postMessage({ type: 'reset' });
@@ -232,7 +233,7 @@ async function main() {
       $('lab-pong').classList.toggle('on', next === 'pong');
       $('lab-card').hidden = next === 'off';
       $('lab-channels').hidden = next !== 'tv';
-      $('lab-title').textContent = next === 'pong' ? '🏓 초파리 탁구' : '📺 초파리 TV';
+      $('lab-title').textContent = next === 'pong' ? '초파리 탁구' : '초파리 TV';
       $('lab-note').textContent = LAB_NOTE[next] || '';
       if (next === 'pong') lab.resetPong();
     };

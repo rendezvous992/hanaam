@@ -1,5 +1,5 @@
 // ⚫🏓 초파리 경기장: 연결체 뇌 두 개(워커 두 개 = 자리 두 개)가 오목을 두거나 탁구를 친다.
-// 자리에는 명단의 어떤 초파리든 앉힐 수 있고(➕ 새 초파리 = 원래 연결체), 초파리마다 뇌가 따로 저장된다.
+// 자리에는 명단의 어떤 초파리든 앉힐 수 있고(새 초파리 = 원래 연결체), 초파리마다 뇌가 따로 저장된다.
 // 탁구 규칙·조련은 pong-duel.js.
 //
 // 수 선택(정위 반응): 판 그림을 그 초파리의 광수용체에 20ms 보여주고, 수용장을 아는
@@ -12,7 +12,7 @@
 //   조련사는 수를 대신 고르지 않는다. ▶ 공식 대결은 학습 없이 실력만 겨룬다.
 // 보관(brain-store.js): 초파리마다 훈련으로 바뀐 시냅스와 기록이 사이트 공유 저장소에 남아,
 //   링크로 들어온 누구나 그 뇌를 이어받아 대결시키거나 더 가르칠 수 있다.
-// ♾️ 무한 조련: 멈출 때까지 계속 가르치고 일정 판마다 자동 저장. 조련 중에는 뒤에서 도는
+// 무한 조련: 멈출 때까지 계속 가르치고 일정 판마다 자동 저장. 조련 중에는 뒤에서 도는
 //   뇌 애니메이션을 멈춰 CPU를 판 보기에만 쓴다(빠르게).
 import { loadWiring } from './data.js';
 import { FlyEye, SCREEN_W, SCREEN_H } from './vision.js';
@@ -236,8 +236,8 @@ class FlyPlayer {
 }
 
 const HINT = {
-  omok: '두 자리 모두 실제 연결체 뇌(뉴런 139,255개)입니다. 판을 20ms 보여주면 <b>그 뇌의 시각 뉴런이 가장 강하게 반응한 빈 칸</b>에 둡니다. 규칙·점수표·선생님은 없고, 5목 판정은 심판만 합니다. <b>🎓 조련</b>에서는 수가 놓일 때마다 조련사가 결과만 보고 칭찬(설탕 + 보상 도파민)이나 꾸지람(쓴맛 + 처벌 도파민)을 주고, 그 수를 고르게 만든 시냅스만 강화·약화됩니다. ▶ 대결은 학습 없이 실력만 겨룹니다. 위 선택 상자로 자리에 앉힐 초파리를 바꾸거나 ➕ 새 초파리를 만들 수 있습니다.',
-  pong: '두 초파리가 마주 보고 탁구를 칩니다. 게임 시간 0.1초마다 각자의 눈에 <b>공과 자기 패들만</b> 20ms 보여주고, 시각 뉴런이 공을 가장 강하게 본 위치로 패들이 갑니다(정위 반응, 학습된 디코더 없음). <b>🎓 조련</b>에서는 공이 올 때마다 조련사가 떨어질 곳으로 다가갔는지만 보고 칭찬·꾸지람, 받아내면 설탕 + 보상 도파민, 놓치면 쓴맛 + 처벌 도파민을 주고, 그 움직임을 만든 시냅스만 바뀝니다. 🧑 나 vs 흑은 판 위에서 마우스·손가락으로 위쪽 패들을 움직입니다.',
+  omok: '두 자리 모두 실제 연결체 뇌(뉴런 139,255개)입니다. 판을 20ms 보여주면 <b>그 뇌의 시각 뉴런이 가장 강하게 반응한 빈 칸</b>에 둡니다. 규칙·점수표·선생님은 없고, 5목 판정은 심판만 합니다. <b>조련</b>에서는 수가 놓일 때마다 조련사가 결과만 보고 칭찬(설탕 + 보상 도파민)이나 꾸지람(쓴맛 + 처벌 도파민)을 주고, 그 수를 고르게 만든 시냅스만 강화·약화됩니다. 대결은 학습 없이 실력만 겨룹니다. 위 선택 상자로 자리에 앉힐 초파리를 바꾸거나 새 초파리를 만들 수 있습니다.',
+  pong: '두 초파리가 마주 보고 탁구를 칩니다. 게임 시간 0.1초마다 각자의 눈에 <b>공과 자기 패들만</b> 20ms 보여주고, 시각 뉴런이 공을 가장 강하게 본 위치로 패들이 갑니다(정위 반응, 학습된 디코더 없음). <b>조련</b>에서는 공이 올 때마다 조련사가 떨어질 곳으로 다가갔는지만 보고 칭찬·꾸지람, 받아내면 설탕 + 보상 도파민, 놓치면 쓴맛 + 처벌 도파민을 주고, 그 움직임을 만든 시냅스만 바뀝니다. 나 vs 흑은 판 위에서 마우스·손가락으로 위쪽 패들을 움직입니다.',
 };
 const CAP = {
   omok: '{n}가 본 판<br>밝을수록 뇌 반응이 강함<br>파란 테두리 = 고른 칸',
@@ -311,7 +311,7 @@ export class OmokArena {
         document.getElementById(`omok-eth-${k}`).oninput = e => {
           const v = +e.target.value / 100;
           this.flies[k].setEthanol(v);
-          document.getElementById(`omok-eth-${k}-val`).textContent = v ? `🍺 ${(v * 0.4).toFixed(2)} g/dL` : '맨정신';
+          document.getElementById(`omok-eth-${k}-val`).textContent = v ? `${(v * 0.4).toFixed(2)} g/dL` : '맨정신';
         };
       }
       this.setGame(game, true);
@@ -322,8 +322,8 @@ export class OmokArena {
       this.updateCards(); this.showSave();
       const { A, B } = this.flies;
       this.say(found
-        ? `저장된 뇌를 이어받았습니다 (${A.name} 오목 ${A.trained}판·탁구 ${A.pong.trained}점 / ${B.name} 오목 ${B.trained}판·탁구 ${B.pong.trained}점). 🎓 더 가르치거나 ▶ 대결시켜 보세요.`
-        : '준비 완료. 두 뇌는 똑같은 연결체로 시작합니다. 🎓 조련으로 가르친 뒤 ▶ 대결로 붙여 보세요.');
+        ? `저장된 뇌를 이어받았습니다 (${A.name} 오목 ${A.trained}판·탁구 ${A.pong.trained}점 / ${B.name} 오목 ${B.trained}판·탁구 ${B.pong.trained}점). 조련으로 더 가르치거나 대결시켜 보세요.`
+        : '준비 완료. 두 뇌는 똑같은 연결체로 시작합니다. 조련으로 가르친 뒤 대결로 붙여 보세요.');
     } else {
       for (const f of Object.values(this.flies)) f.setRunning(true);
       this.setGame(game);
@@ -341,16 +341,16 @@ export class OmokArena {
 
   setGame(game, force) {
     if (!force && game === this.game) return;
-    if (this.busy) { this.say('진행 중인 경기·훈련을 ⏹ 멈춘 뒤 바꿔 주세요.'); return; }
+    if (this.busy) { this.say('진행 중인 경기·훈련을 멈춘 뒤 바꿔 주세요.'); return; }
     this.game = game; this.human = false;
     const $ = id => document.getElementById(id), pong = game === 'pong';
     $('arena-tab-omok').classList.toggle('on', !pong);
     $('arena-tab-pong').classList.toggle('on', pong);
-    $('arena-title').textContent = pong ? '🏓 초파리 탁구 대결' : '⚫ 초파리 오목 대결';
+    $('arena-title').textContent = pong ? '초파리 탁구 대결' : '초파리 오목 대결';
     $('arena-hint').innerHTML = HINT[game];
-    $('omok-match').textContent = pong ? '▶ 대결 (5점)' : '▶ 대결';
-    $('omok-train').textContent = pong ? '🎓 조련 ×10점' : '🎓 조련 ×10판';
-    $('omok-human').textContent = pong ? '🧑 나 vs 아래' : '🧑 나 vs 흑';
+    $('omok-match').textContent = pong ? '대결 (5점)' : '대결';
+    $('omok-train').textContent = pong ? '조련 ×10점' : '조련 ×10판';
+    $('omok-human').textContent = pong ? '나 vs 아래' : '나 vs 흑';
     if (pong && this.pong) this.pong.reset();
     else { this.board.fill(0); this.lastMove = -1; this.drawBoard(); }
     if (this.flies) this.updateCards();
@@ -398,7 +398,7 @@ export class OmokArena {
   }
 
   async seat(k, id) {
-    if (this.busy) { this.fillPickers(); this.say('진행 중인 경기·훈련을 ⏹ 멈춘 뒤 바꿔 주세요.'); return; }
+    if (this.busy) { this.fillPickers(); this.say('진행 중인 경기·훈련을 멈춘 뒤 바꿔 주세요.'); return; }
     const other = k === 'A' ? 'B' : 'A';
     if (this.flies[k].id === id) return;
     this.busy = true;
@@ -448,13 +448,13 @@ export class OmokArena {
     if (this.busy || !this.flies) return;
     const btn = document.getElementById(`del-${k}`), f = this.flies[k];
     if (this.delArmed !== k) {
-      this.delArmed = k; btn.classList.add('armed'); btn.textContent = '🗑 정말?';
+      this.delArmed = k; btn.classList.add('armed'); btn.textContent = '정말 삭제';
       this.say(`🗑 한 번 더 누르면 "${f.name}"의 뇌와 기록이 영구히 지워집니다.`);
       clearTimeout(this.delTimer);
-      this.delTimer = setTimeout(() => { this.delArmed = null; btn.classList.remove('armed'); btn.textContent = '🗑'; }, 3000);
+      this.delTimer = setTimeout(() => { this.delArmed = null; btn.classList.remove('armed'); btn.textContent = '삭제'; }, 3000);
       return;
     }
-    this.delArmed = null; btn.classList.remove('armed'); btn.textContent = '🗑';
+    this.delArmed = null; btn.classList.remove('armed'); btn.textContent = '삭제';
     this.busy = true;
     const { id, name } = f, shared = this.store.state === 'shared';
     if (shared) await this.store.remove(id);
@@ -508,7 +508,7 @@ export class OmokArena {
       while (!(w = winner(this.board)) && !this.stop) {
         const k = me === 1 ? 'A' : 'B';
         const rate = done ? ` · 분당 ${(done / ((performance.now() - t0) / 60000)).toFixed(1)}판` : '';
-        const head = forever ? `♾️ 무한 조련 ${gi + 1}판째${rate} · ` : train ? `🎓 조련 ${gi + 1}/${games} · ` : '';
+        const head = forever ? `무한 조련 ${gi + 1}판째${rate} · ` : train ? `조련 ${gi + 1}/${games} · ` : '';
         this.say(`${head}${this.flies[k].name}(${me === 1 ? '흑' : '백'}) 차례 — 판을 보는 중… (${moves + 1}수)${note}`);
         const before = this.board.slice();
         const c = await this.flies[k].choose(this.board, me);
@@ -537,8 +537,8 @@ export class OmokArena {
       if (delay) await sleep(1200);
     }
     if (train) this.fast(false);
-    if (this.stop) this.say(forever ? `♾️ 무한 조련을 멈췄습니다 — 이번에 ${done}판 가르쳤습니다.` : '멈췄습니다.');
-    else if (train) this.say(`조련 ${games}판 끝. 카드의 발전 그래프가 오르는지 보세요. ▶ 대결은 학습 없이 실력만 겨룹니다.`);
+    if (this.stop) this.say(forever ? `무한 조련을 멈췄습니다 — 이번에 ${done}판 가르쳤습니다.` : '멈췄습니다.');
+    else if (train) this.say(`조련 ${games}판 끝. 카드의 발전 그래프가 오르는지 보세요. 대결은 학습 없이 실력만 겨룹니다.`);
     this.busy = false;
     await this.save(train);
   }
@@ -558,7 +558,7 @@ export class OmokArena {
     if (games > 1) { slots.push(newGame('B')); started++; }
     while (slots.length && !this.stop) {
       const rate = done ? ` · 분당 ${(done / ((performance.now() - t0) / 60000)).toFixed(1)}판` : '';
-      const head = forever ? `♾️ 무한 조련 · ${done}판 끝${rate}` : `🎓 조련 ${done}/${games}판${rate}`;
+      const head = forever ? `무한 조련 · ${done}판 끝${rate}` : `조련 ${done}/${games}판${rate}`;
       this.say(`${head} · ${slots.length > 1 ? '두 판 동시 진행' : '마지막 판'}${note}`);
       const notes = await Promise.all(slots.map(async (g, i) => {
         const k = mover(g), f = this.flies[k];
@@ -596,8 +596,8 @@ export class OmokArena {
     }
     this.fast(false);
     this.say(this.stop
-      ? (forever ? `♾️ 무한 조련을 멈췄습니다 — 이번에 ${done}판 가르쳤습니다.` : `멈췄습니다 (${done}판 조련).`)
-      : `조련 ${games}판 끝. 카드의 발전 그래프가 오르는지 보세요. ▶ 대결은 학습 없이 실력만 겨룹니다.`);
+      ? (forever ? `무한 조련을 멈췄습니다 — 이번에 ${done}판 가르쳤습니다.` : `멈췄습니다 (${done}판 조련).`)
+      : `조련 ${games}판 끝. 카드의 발전 그래프가 오르는지 보세요. 대결은 학습 없이 실력만 겨룹니다.`);
     this.busy = false;
     await this.save(true);
   }
@@ -662,11 +662,11 @@ export class OmokArena {
     if (this.busy || !this.flies) return;
     const btn = document.getElementById('omok-reset');
     if (!this.resetArmed) {
-      this.resetArmed = true; btn.textContent = '⚠️ 한 번 더 누르면 초기화';
-      setTimeout(() => { this.resetArmed = false; btn.textContent = '🧹 지금 두 뇌 초기화'; }, 3000);
+      this.resetArmed = true; btn.textContent = '한 번 더 누르면 초기화';
+      setTimeout(() => { this.resetArmed = false; btn.textContent = '지금 두 뇌 초기화'; }, 3000);
       return;
     }
-    this.resetArmed = false; btn.textContent = '🧹 지금 두 뇌 초기화';
+    this.resetArmed = false; btn.textContent = '지금 두 뇌 초기화';
     this.busy = true;
     for (const f of Object.values(this.flies)) {
       await f.importDiff(null);
@@ -730,7 +730,7 @@ export class OmokArena {
           : p.length < 4
             ? `칭찬받은 수 ${avg(p)}% · ${syn}`
             : `칭찬받은 수: 처음 ${m}판 ${avg(p.slice(0, m))}% → 최근 ${m}판 ${avg(p.slice(-m))}% · ${syn}`;
-        this.drawSeries(k, p, 10, '오목을 조련하면 판마다 칭찬받은 비율이 그려집니다');
+        this.drawSeries(k, p, 10, '조련하면 발전 곡선이 그려집니다');
         $(`omok-prog-${k}`).title = '조련 판마다 칭찬받은 수의 비율 · 노란 선 = 최근 10판 평균';
       } else {
         const P = f.pong, h = [...P.hits].map(Number), m = Math.min(20, Math.floor(h.length / 2));
@@ -738,7 +738,7 @@ export class OmokArena {
         $(`omok-pref-${k}`).textContent = h.length < 4
           ? `공이 온 횟수 ${h.length}번 · ${syn}`
           : `공 받아낸 비율: 처음 ${m}번 ${avg(h.slice(0, m))}% → 최근 ${m}번 ${avg(h.slice(-m))}% · ${syn}`;
-        this.drawSeries(k, h, 20, '공이 올 때마다 받아냈는지가 그려집니다');
+        this.drawSeries(k, h, 20, '공을 받아낸 기록이 그려집니다');
         $(`omok-prog-${k}`).title = '공이 올 때마다 받아냄(1)/놓침(0) · 노란 선 = 최근 20번 평균';
       }
       this.drawSeen(k);
@@ -754,7 +754,7 @@ export class OmokArena {
     for (const y of [0.25, 0.5, 0.75]) { g.beginPath(); g.moveTo(0, H * y); g.lineTo(W, H * y); g.stroke(); }
     g.fillStyle = 'rgba(255,255,255,0.45)'; g.font = '9px sans-serif';
     g.fillText('100%', 2, 9); g.fillText('0%', 2, H - 2);
-    if (!p.length) { g.fillText(empty, 26, H / 2 + 3); return; }
+    if (!p.length) { g.textAlign = 'center'; g.fillText(empty, W / 2, H / 2 + 3); g.textAlign = 'left'; return; }
     const x = i => p.length === 1 ? W / 2 : 24 + (W - 28) * i / (p.length - 1), y = v => H - 3 - (H - 6) * v;
     g.fillStyle = 'rgba(127,215,255,0.35)';
     p.forEach((v, i) => g.fillRect(x(i) - 1, y(v) - 1, 2, 2));

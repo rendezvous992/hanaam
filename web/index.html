@@ -13,8 +13,8 @@
 <div id="loading">초기화 중…</div>
 
 <header>
-  <h1>🪰 가상 초파리 뇌</h1>
-  <p>실제 초파리 커넥톰(FlyWire v783) — 뉴런 139,255개 · 시냅스 연결 270만 쌍의 실시간 스파이킹 시뮬레이션</p>
+  <h1>가상 초파리 뇌</h1>
+  <p><span class="nb">실제 초파리 커넥톰(FlyWire v783)<span class="sep">·</span></span> <span class="nb">뉴런 139,255개<span class="sep">·</span></span> <span class="nb">시냅스 연결 270만 쌍<span class="sep">·</span></span> <span class="nb">실시간 스파이킹 시뮬레이션</span></p>
 </header>
 
 <div id="fly-stage">
@@ -23,16 +23,16 @@
 </div>
 
 <div id="lab-card" hidden>
-  <div class="lab-head"><b id="lab-title">📺 초파리 TV</b><span id="lab-stats"></span></div>
+  <div class="lab-head"><b id="lab-title">초파리 TV</b><span id="lab-stats"></span></div>
   <div class="lab-views">
     <figure><canvas id="lab-screen" width="160" height="120"></canvas><figcaption>화면 → 광수용체</figcaption></figure>
     <figure><canvas id="lab-seen" width="160" height="120"></canvas><figcaption>뇌가 본 화면 (시각 뉴런)</figcaption></figure>
   </div>
   <div id="lab-channels" class="row">
-    <button data-ch="stripes" class="on">〰️ 흐르는 줄무늬</button>
-    <button data-ch="loom">🔵 다가오는 원</button>
-    <button data-ch="flicker">⚡ 깜빡임</button>
-    <button data-ch="stars">✨ 반딧불</button>
+    <button data-ch="stripes" class="on">흐르는 줄무늬</button>
+    <button data-ch="loom">다가오는 원</button>
+    <button data-ch="flicker">깜빡임</button>
+    <button data-ch="stars">반딧불</button>
   </div>
   <p class="hint" id="lab-note"></p>
 </div>
@@ -40,10 +40,10 @@
 <div id="arena" hidden>
   <div class="arena-box">
     <div class="arena-head">
-      <h2 id="arena-title">⚫ 초파리 오목 대결</h2>
+      <h2 id="arena-title">초파리 오목 대결</h2>
       <div class="arena-tabs">
-        <button id="arena-tab-omok" class="on">⚫ 오목</button>
-        <button id="arena-tab-pong">🏓 탁구</button>
+        <button id="arena-tab-omok" class="on">오목</button>
+        <button id="arena-tab-pong">탁구</button>
       </div>
       <button id="omok-close" aria-label="닫기">✕</button>
     </div>
@@ -53,44 +53,44 @@
         <h3><span id="omok-name-A">초파리 A</span> · <span id="omok-side-A">흑</span></h3>
         <div class="slot-row">
           <select id="slot-A" class="slot-pick" aria-label="이 자리에 둘 초파리"></select>
-          <button id="del-A" class="del-btn" title="이 초파리 삭제">🗑</button>
+          <button id="del-A" class="del-btn" title="이 초파리 삭제">삭제</button>
         </div>
         <canvas id="omok-brain-A" width="220" height="130"></canvas>
         <div class="seen-row"><canvas id="omok-seen-A" width="108" height="108"></canvas><span id="omok-seen-cap-A"></span></div>
         <p id="omok-info-A" class="info"></p>
         <p id="omok-pref-A" class="hint"></p>
         <canvas id="omok-prog-A" class="prog" width="220" height="56"></canvas>
-        <label>🍺 <span id="omok-eth-A-val">맨정신</span><input id="omok-eth-A" type="range" min="0" max="100" value="0"></label>
+        <label>에탄올 <span id="omok-eth-A-val">맨정신</span><input id="omok-eth-A" type="range" min="0" max="100" value="0"></label>
       </section>
       <section class="board-col">
         <canvas id="omok-board" width="360" height="360"></canvas>
         <p id="omok-status" class="info"></p>
         <div class="row row3">
-          <button id="omok-match">▶ 대결</button>
-          <button id="omok-train">🎓 조련 ×10</button>
-          <button id="omok-forever">♾️ 무한 조련</button>
-          <button id="omok-human">🧑 나 vs 흑</button>
-          <button id="omok-stop">⏹ 멈춤</button>
+          <button id="omok-match" class="primary">대결</button>
+          <button id="omok-train">조련 ×10판</button>
+          <button id="omok-forever">무한 조련</button>
+          <button id="omok-human">나 vs 흑</button>
+          <button id="omok-stop">멈춤</button>
         </div>
         <div class="new-fly">
           <input id="new-fly-name" maxlength="16" placeholder="새 초파리 이름">
-          <button id="new-fly">➕ 새 초파리</button>
+          <button id="new-fly">새 초파리</button>
         </div>
         <p id="omok-save" class="hint save-line"></p>
-        <button id="omok-reset" class="reset-btn" hidden>🧹 지금 두 뇌 초기화</button>
+        <button id="omok-reset" class="reset-btn" hidden>지금 두 뇌 초기화</button>
       </section>
       <section class="fly-card">
         <h3><span id="omok-name-B">초파리 B</span> · <span id="omok-side-B">백</span></h3>
         <div class="slot-row">
           <select id="slot-B" class="slot-pick" aria-label="이 자리에 둘 초파리"></select>
-          <button id="del-B" class="del-btn" title="이 초파리 삭제">🗑</button>
+          <button id="del-B" class="del-btn" title="이 초파리 삭제">삭제</button>
         </div>
         <canvas id="omok-brain-B" width="220" height="130"></canvas>
         <div class="seen-row"><canvas id="omok-seen-B" width="108" height="108"></canvas><span id="omok-seen-cap-B"></span></div>
         <p id="omok-info-B" class="info"></p>
         <p id="omok-pref-B" class="hint"></p>
         <canvas id="omok-prog-B" class="prog" width="220" height="56"></canvas>
-        <label>🍺 <span id="omok-eth-B-val">맨정신</span><input id="omok-eth-B" type="range" min="0" max="100" value="0"></label>
+        <label>에탄올 <span id="omok-eth-B-val">맨정신</span><input id="omok-eth-B" type="range" min="0" max="100" value="0"></label>
       </section>
     </div>
   </div>
@@ -98,13 +98,13 @@
 
 <aside id="panel">
   <section>
-    <h2>🎮 실험실</h2>
+    <h2>실험실</h2>
     <p class="hint">초파리 눈(광수용체 8,456개)에 화면을 보여주고, 수용장을 측정한 시각 뉴런으로 뇌가 본 것을 읽습니다.</p>
     <div class="row">
-      <button id="lab-tv">📺 TV 보여주기</button>
-      <button id="lab-pong">🏓 탁구</button>
-      <button id="lab-omok">⚫ 오목 대결</button>
-      <button id="lab-pongduel">🏓 탁구 대결</button>
+      <button id="lab-tv">TV 보여주기</button>
+      <button id="lab-pong">탁구</button>
+      <button id="lab-omok">오목 대결</button>
+      <button id="lab-pongduel">탁구 대결</button>
     </div>
   </section>
 
@@ -125,13 +125,13 @@
   </section>
 
   <section>
-    <h2>🍺 에탄올 · 🚬 니코틴</h2>
+    <h2>에탄올 · 니코틴</h2>
     <p class="hint">장난스러운 근사 모델: 에탄올은 저용량에서 들뜸, 고용량에서 억제 강화·진정.
       니코틴은 초파리 뇌의 주 흥분성 전달물질인 아세틸콜린(ACh) 시냅스를 증폭합니다.</p>
-    <label>🍺 <span id="ethanol-val">맨정신</span>
+    <label>에탄올 <span id="ethanol-val">맨정신</span>
       <input id="ethanol" type="range" min="0" max="100" value="0">
     </label>
-    <label>🚬 <span id="nic-val">안 피움</span>
+    <label>니코틴 <span id="nic-val">안 피움</span>
       <input id="nicotine" type="range" min="0" max="100" value="0">
     </label>
   </section>
@@ -139,10 +139,10 @@
   <section>
     <h2>시뮬레이션</h2>
     <div class="row">
-      <button id="pause">⏸ 일시정지</button>
-      <button id="reset">↺ 리셋</button>
-      <button id="rotate" class="on">🔄 회전</button>
-      <button id="skel" class="on">🧶 형태</button>
+      <button id="pause">일시정지</button>
+      <button id="reset">리셋</button>
+      <button id="rotate" class="on">자동 회전</button>
+      <button id="skel" class="on" title="뉴런 131개의 실제 가지 모양을 선으로 겹쳐 그립니다">뉴런 모양</button>
     </div>
     <label>속도 <span id="speed-val">×6</span>
       <input id="speed" type="range" min="1" max="20" value="6">
