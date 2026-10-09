@@ -397,6 +397,7 @@ export class OmokArena {
     this.onOpen?.();
     if (!this.flies) {
       this.busy = true;
+      this.setGame(game, true);                         // 뇌를 불러오는 동안에도 고른 경기(탭·제목·판)가 보이게
       this.say('두 뇌를 준비하는 중… (커넥톰 데이터를 두 벌 더 불러옵니다)');
       const [wa, wb] = await Promise.all([loadWiring(), loadWiring()]);
       this.flies = { A: new FlyPlayer('A', this.vis, this.n, wa, this.rewardIdx), B: new FlyPlayer('B', this.vis, this.n, wb, this.rewardIdx) };
@@ -409,8 +410,9 @@ export class OmokArena {
         };
       }
       this.setGame(game, true);
-      this.board.fill(0); this.drawBoard(); this.updateCards();
+      this.updateCards();
       this.idleLook();
+      if (!this.raf) this.loop();                       // 탁구대·뇌 화면은 저장본을 기다리지 않고 바로 그린다
       this.say('공유 저장소에서 저장된 초파리를 찾는 중…');
       const found = await this.loadShared();
       this.busy = false;
@@ -456,6 +458,7 @@ export class OmokArena {
     $('omok-train').textContent = pong ? '10점 조련' : '10판 조련';
     $('omok-human').textContent = pong ? '직접 치기' : '직접 두기';
     if (pong && this.pong) this.pong.reset();
+    else if (pong) this.drawWaiting('탁구대를 준비하는 중…');
     else { this.board.fill(0); this.lastMove = -1; this.drawBoard(); }
     if (this.flies) this.updateCards();
   }
@@ -928,6 +931,16 @@ export class OmokArena {
       g.strokeStyle = '#8cc8f5'; g.lineWidth = 1.25 * u;
       g.strokeRect((f.lastMove % N) * s + 1.2 * u, ((f.lastMove / N) | 0) * s + 1.2 * u, s - 2.4 * u, s - 2.4 * u);
     }
+  }
+
+  // 두 뇌를 불러오는 동안 판 자리에 보이는 화면
+  drawWaiting(text) {
+    const g = this.boardCv.getContext('2d'), W = this.boardCv.width, u = W / 360;
+    g.fillStyle = '#0f1116'; g.fillRect(0, 0, W, W);
+    g.fillStyle = 'rgba(200,206,220,0.6)'; g.font = `500 ${12 * u}px "IBM Plex Sans KR", system-ui, sans-serif`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, W / 2, W / 2);
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
   }
 
   drawBoard() {

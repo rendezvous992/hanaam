@@ -21,6 +21,15 @@ const SERVE_SPEED = 0.42, MAX_SPEED = 0.9;
 export const WIN_POINTS = 5, TRAIN_POINTS = 10;
 // 화면의 탁구대 크기(캔버스 폭·높이 대비). 양 끝 뒤에 손잡이까지 들어간 라켓이 보일 자리를 남긴다.
 export const TABLE_W = 0.5, TABLE_H = 0.68;
+// 탁구 규칙(위에서 본 단순화): 보낸 공은 상대 코트에 한 번 튀어야 한다(BOUNCE_S = 보낸 쪽 라켓 줄에서
+//   받는 쪽 라켓 줄까지의 72% 지점). 그때 공이 대 밖이면 아웃 — 친 사람이 점수를 잃는다. 옆벽 반사는 없다.
+const BOUNCE_S = 0.72;
+const REACH = PAD_W / 2 + BALL_R;       // 몸(물리의 라켓 위치)에서 라켓이 공에 닿는 거리 = 받는 범위
+const PAD_MIN = -0.08, PAD_MAX = 1.08;  // 대 옆으로 조금 나가 넓게 튄 공도 받을 수 있다
+const MAX_ANGLE = 0.5;                  // 라켓 가장자리로 맞을수록 바깥으로 (라디안)
+const SWING_V = 0.3;                    // 라켓을 옆으로 움직이던 속도가 공의 옆 속도에 더해지는 비율
+const RACKET_W = 0.13;                  // 화면의 라켓 블레이드 폭(탁구대 폭 대비 — 실제 150mm / 1525mm ≈ 0.1)
+const other = k => k === 'A' ? 'B' : 'A';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
@@ -70,83 +79,54 @@ function racketPaths() {
   return RACKET = { blade, handle, cheekTop, grain };
 }
 
-// cx, cy: 블레이드 가운데(화면), bw: 블레이드 폭(px) = PAD_W × 탁구대 폭, rot: 회전(0 = 손잡이가 아래)
-//   빛은 화면 왼쪽 위에서 온다(탁구대 반사광과 같은 쪽) — 라켓이 돌아가도 윤기·음영은 화면 기준으로 둔다.
+// cx, cy: 블레이드 가운데(화면), bw: 블레이드 폭(px), rot: 회전(0 = 손잡이가 아래)
+//   실제 라켓처럼: 러버가 블레이드 가장자리까지 덮고, 옆으로는 1~2mm 나무 테만 보인다.
+//   만화 같은 굵은 외곽선·강한 광택 없이, 반무광 러버와 옅게 결이 보이는 손잡이. 빛은 화면 왼쪽 위.
 function drawRacket(g, cx, cy, bw, rubber, rot, u) {
   const { blade, handle, cheekTop, grain } = racketPaths(), a = bw / 2, red = rubber === 'red';
   const cs = Math.cos(rot), sn = Math.sin(rot);
   const L = (x, y) => [x * cs + y * sn, -x * sn + y * cs];      // 화면 방향 → 지역 방향
   const local = (dx = 0, dy = 0) => { g.translate(cx + dx, cy + dy); g.rotate(rot); g.scale(a, a); };
-  const lw = 1 / a;                                               // 1px의 지역 단위
-  // 1) 그림자 하나: 블레이드와 손잡이를 캔버스 밖에 함께 그리고 그림자만 탁구대 위로 (겹쳐 진해지지 않게)
+  const lw = 1 / a;
+  // 1) 그림자: 대 위 15cm쯤 들고 있는 높이 — 옅고 부드럽게, 블레이드·손잡이를 한 덩어리로
   g.save();
   const OFF = 6000;
   g.translate(-OFF, 0); local();
-  g.shadowColor = 'rgba(0,0,0,0.42)'; g.shadowBlur = 6 * u;
-  g.shadowOffsetX = OFF + 3.5 * u; g.shadowOffsetY = 7 * u;
+  g.shadowColor = 'rgba(0,0,0,0.32)'; g.shadowBlur = 5 * u;
+  g.shadowOffsetX = OFF + 2.5 * u; g.shadowOffsetY = 5 * u;
   g.fillStyle = '#000'; g.fill(blade); g.fill(handle);
   g.restore();
-  // 2) 블레이드·손잡이 옆면(두께): 빛 반대쪽(오른쪽 아래)으로 살짝 비켜 그린 어두운 나무
-  g.save(); local(0.45 * u, 1.1 * u);
-  g.fillStyle = '#4b3019'; g.fill(blade); g.fill(handle);
+  // 2) 옆면 두께: 빛 반대쪽으로 아주 조금 비켜 그린 어두운 나무
+  g.save(); local(0.25 * u, 0.6 * u);
+  g.fillStyle = '#3b2715'; g.fill(blade); g.fill(handle);
   g.restore();
   g.save(); local();
-  // 3) 블레이드 가장자리 합판 → 스펀지 → 러버(평평한 민러버)
+  // 3) 블레이드: 나무 테 → 그 안을 러버가 거의 다 덮는다
+  g.fillStyle = '#9a7650'; g.fill(blade);
+  const k = 1 - 0.45 * u * lw;                                    // 테 두께 ≈ 0.45 px(캔버스 단위 기준)
+  g.save(); g.translate(0, -0.04); g.scale(k, k); g.translate(0, 0.04);
   const [l0x, l0y] = L(-1, -1), [l1x, l1y] = L(1, 1);
-  const ply = g.createLinearGradient(l0x, l0y, l1x, l1y);
-  ply.addColorStop(0, '#d4aa75'); ply.addColorStop(0.5, '#b8895a'); ply.addColorStop(1, '#8a5f37');
-  g.fillStyle = ply; g.fill(blade);
-  g.strokeStyle = 'rgba(38,22,8,0.85)'; g.lineWidth = 0.5 * u * lw; g.stroke(blade);
-  const inset = (px, draw) => { const k = 1 - px * lw; g.save(); g.translate(0, -0.04); g.scale(k, k); g.translate(0, 0.04); draw(); g.restore(); };
-  inset(0.55 * u, () => { g.strokeStyle = 'rgba(70,42,18,0.5)'; g.lineWidth = 0.35 * u * lw; g.stroke(blade); });    // 합판 겹 선
-  inset(1.05 * u, () => { g.fillStyle = red ? '#d9a453' : '#cf9d55'; g.fill(blade); });                                // 스펀지
-  inset(1.6 * u, () => {
-    const rg = g.createLinearGradient(l0x * 0.9, l0y * 0.9, l1x * 0.9, l1y * 0.9);
-    if (red) { rg.addColorStop(0, '#c83a31'); rg.addColorStop(0.5, '#ab2821'); rg.addColorStop(1, '#831d19'); }
-    else { rg.addColorStop(0, '#383a40'); rg.addColorStop(0.5, '#222327'); rg.addColorStop(1, '#141518'); }
-    g.fillStyle = rg; g.fill(blade);
-    g.save(); g.clip(blade);
-    // 조명에 비친 넓고 부드러운 윤기 (민러버는 반무광)
-    const [hx, hy] = L(-0.4, -0.45);
-    const sh = g.createRadialGradient(hx, hy, 0, hx, hy, 1.1);
-    sh.addColorStop(0, red ? 'rgba(255,200,185,0.22)' : 'rgba(215,220,235,0.15)'); sh.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = sh; g.fillRect(-1.3, -1.3, 2.6, 2.6);
-    // 가장자리 쪽은 살짝 어둡게
-    const rim = g.createRadialGradient(0, -0.05, 0.78, 0, -0.05, 1.08);
-    rim.addColorStop(0, 'rgba(0,0,0,0)'); rim.addColorStop(1, 'rgba(0,0,0,0.18)');
-    g.fillStyle = rim; g.fillRect(-1.3, -1.3, 2.6, 2.6);
-    // 빛 쪽 가장자리의 가는 반사광 — 검은 러버가 어두운 바닥에서도 보이게
-    const la = Math.atan2(...L(-0.6, -0.8).reverse());
-    g.strokeStyle = 'rgba(255,255,255,0.14)'; g.lineWidth = 0.7 * u * lw;
-    g.beginPath(); g.ellipse(0, -0.1, 0.975, 0.955, 0, la - 0.55, la + 0.55); g.stroke();
-    g.restore();
-  });
-  // 4) 손잡이: 둥근 나무(가로 음영, 빛 쪽이 밝게) + 길이 방향 나뭇결 + 가장자리 합판 선 + 끝의 나이테 면
-  const side = L(-1, 0)[0] < 0 ? 1 : -1;                         // 지역 x에서 빛이 오는 쪽의 부호(-1 = 왼쪽)
-  const wd = g.createLinearGradient(-0.25 * side, 0, 0.25 * side, 0);
-  wd.addColorStop(0, '#6c4626'); wd.addColorStop(0.24, '#b98853'); wd.addColorStop(0.42, '#dbb47e');
-  wd.addColorStop(0.7, '#b08050'); wd.addColorStop(1, '#5e3c20');
+  const rg = g.createLinearGradient(l0x, l0y, l1x, l1y);
+  if (red) { rg.addColorStop(0, '#b8352d'); rg.addColorStop(1, '#952620'); }
+  else { rg.addColorStop(0, '#2d2f34'); rg.addColorStop(1, '#1b1c20'); }
+  g.fillStyle = rg; g.fill(blade);
+  g.save(); g.clip(blade);
+  // 반무광 러버: 빛 쪽에 아주 옅은 넓은 윤기
+  const [hx, hy] = L(-0.45, -0.5);
+  const sh = g.createRadialGradient(hx, hy, 0, hx, hy, 1.3);
+  sh.addColorStop(0, red ? 'rgba(255,215,200,0.10)' : 'rgba(220,226,240,0.08)'); sh.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = sh; g.fillRect(-1.4, -1.4, 2.8, 2.8);
+  g.restore(); g.restore();
+  // 4) 손잡이: 차분한 나무색, 길이 방향 결은 아주 옅게
+  const side = L(-1, 0)[0] < 0 ? 1 : -1;
+  const wd = g.createLinearGradient(-0.24 * side, 0, 0.24 * side, 0);
+  wd.addColorStop(0, '#7d5f3e'); wd.addColorStop(0.35, '#b3926a'); wd.addColorStop(0.55, '#c3a37a'); wd.addColorStop(1, '#6f5336');
   g.fillStyle = wd; g.fill(handle);
   g.save(); g.clip(handle);
-  g.strokeStyle = 'rgba(92,56,24,0.30)'; g.lineWidth = 0.45 * u * lw; g.stroke(grain);
-  g.strokeStyle = 'rgba(64,38,16,0.38)'; g.lineWidth = 0.4 * u * lw;
-  g.beginPath();
-  for (const s of [-1, 1]) { g.moveTo(s * 0.152, 1.16); g.bezierCurveTo(s * 0.146, 1.42, s * 0.164, 1.78, s * 0.205, 2.3); }
-  g.stroke();
-  const end = g.createLinearGradient(0, 2.2, 0, 2.35);
-  end.addColorStop(0, 'rgba(60,34,14,0)'); end.addColorStop(1, 'rgba(60,34,14,0.45)');
-  g.fillStyle = end; g.fillRect(-0.3, 2.2, 0.6, 0.2);
-  // 볼 아래, 블레이드와 맞닿는 곳의 옅은 그늘
-  const neck = g.createLinearGradient(0, 0.95, 0, 1.2);
-  neck.addColorStop(0, 'rgba(50,28,10,0)'); neck.addColorStop(0.5, 'rgba(50,28,10,0.16)'); neck.addColorStop(1, 'rgba(50,28,10,0)');
-  g.fillStyle = neck; g.fillRect(-0.3, 0.95, 0.6, 0.25);
+  g.strokeStyle = 'rgba(80,52,26,0.16)'; g.lineWidth = 0.35 * u * lw; g.stroke(grain);
   g.restore();
-  g.strokeStyle = 'rgba(40,22,8,0.7)'; g.lineWidth = 0.5 * u * lw; g.stroke(handle);
-  // 러버가 끝나는 볼 윗선: 어두운 이음매 + 그 안쪽의 가는 빛
-  g.strokeStyle = 'rgba(30,16,6,0.6)'; g.lineWidth = 0.6 * u * lw; g.stroke(cheekTop);
-  g.save(); g.translate(0, 0.9 * u * lw);
-  g.strokeStyle = 'rgba(255,236,205,0.30)'; g.lineWidth = 0.45 * u * lw; g.stroke(cheekTop);
-  g.restore();
+  g.strokeStyle = 'rgba(45,28,12,0.35)'; g.lineWidth = 0.3 * u * lw; g.stroke(handle);
+  g.strokeStyle = 'rgba(30,18,8,0.45)'; g.lineWidth = 0.35 * u * lw; g.stroke(cheekTop);   // 러버가 끝나는 이음매
   g.restore();
 }
 
@@ -178,11 +158,19 @@ export class PongDuel {
     this.note = ''; this.mode = null;
   }
 
-  // 가운데에서 to 쪽으로
+  // to 쪽으로 서브: 서브하는 사람(반대편) 라켓 자리에서 상대 코트 안쪽을 노린다
   serve(to) {
-    const a = (Math.random() - 0.5) * 0.9;
-    const dir = to === 'A' ? 1 : -1;
-    this.ball = { x: 0.3 + Math.random() * 0.4, y: 0.5, vx: Math.sin(a) * SERVE_SPEED, vy: dir * Math.cos(a) * SERVE_SPEED, passed: false };
+    const server = other(to);
+    const from = server === 'A' ? PAD_Y - BALL_R : 1 - PAD_Y + BALL_R;
+    const toLine = to === 'A' ? PAD_Y : 1 - PAD_Y;
+    const x0 = clamp(this.pad ? this.pad[server] : 0.5, 0.15, 0.85);
+    const tx = 0.22 + Math.random() * 0.56;                 // 받는 쪽 라켓 줄에서 공이 지날 x
+    const T = Math.abs(toLine - from) / SERVE_SPEED;
+    this.ball = { x: x0, y: from, vx: (tx - x0) / T, vy: Math.sign(toLine - from) * SERVE_SPEED,
+                  passed: false, bounced: false, from: server };
+    (this.swingT || (this.swingT = { A: -1e9, B: -1e9 }))[server] = performance.now();
+    (this.reachAt || (this.reachAt = { A: 0, B: 0 }))[server] = 0;
+    (this.aim || (this.aim = { A: 0.2, B: 0.2 }))[server] = 0.2;
   }
 
   snap() { return { x: this.ball.x, y: this.ball.y, A: this.pad.A, B: this.pad.B }; }
@@ -228,46 +216,64 @@ export class PongDuel {
 
   approaching(k) { return k === 'A' ? this.ball.vy > 0 && !this.ball.passed : this.ball.vy < 0 && !this.ball.passed; }
 
-  // 패들이 없다고 치고 공이 k의 패들 선에 닿는 x (옆벽 반사 포함) — 조련사만 안다
+  // 공이 k의 라켓 줄에 닿는 x (직선 — 옆벽은 없다) — 조련사만 안다
   landingX(k) {
     const b = this.ball, yLine = k === 'A' ? PAD_Y - BALL_R : 1 - PAD_Y + BALL_R;
     const t = (yLine - b.y) / b.vy;
-    if (!(t > 0)) return b.x;
-    const span = 1 - 2 * BALL_R;
-    let x = (b.x - BALL_R + b.vx * t) % (2 * span);
-    if (x < 0) x += 2 * span;
-    return BALL_R + (x > span ? 2 * span - x : x);
+    return t > 0 ? b.x + b.vx * t : b.x;
   }
 
-  // 게임 시간 dt 동안 물리. 반환: [{k, hit}] — 공이 k에게 와서 받았는지/놓쳤는지
+  // 게임 시간 dt 동안 물리. 반환: [{k, hit, out?}]
+  //   {k, hit:true}  k가 받아 쳤다
+  //   {k, hit:false} k가 놓쳤다(공이 k의 끝 너머로) — k가 점수를 잃는다
+  //   {k, hit:false, out:true} k가 친 공이 상대 코트 밖에 떨어졌다(아웃) — k가 점수를 잃는다
   physics(dt) {
-    const ev = [], n = 4, h = dt / n, b = this.ball;
+    const ev = [], n = 4, h = dt / n;
+    const point = (loser, out) => {
+      ev.push({ k: loser, hit: false, out: !!out });
+      this.score[other(loser)]++;
+      this.serve(loser);                                    // 점수를 딴 쪽이 다음 서브
+    };
     for (let s = 0; s < n; s++) {
-      for (const k of ['A', 'B']) this.pad[k] = clamp(this.pad[k] + this.vel[k] * h, PAD_W / 2, 1 - PAD_W / 2);
+      const b = this.ball;
+      for (const k of ['A', 'B']) this.pad[k] = clamp(this.pad[k] + this.vel[k] * h, PAD_MIN, PAD_MAX);
       b.x += b.vx * h; b.y += b.vy * h;
-      if (b.x < BALL_R) { b.x = BALL_R; b.vx = Math.abs(b.vx); }
-      if (b.x > 1 - BALL_R) { b.x = 1 - BALL_R; b.vx = -Math.abs(b.vx); }
-      for (const k of ['A', 'B']) {
-        const down = k === 'A';
-        const line = down ? PAD_Y - BALL_R : 1 - PAD_Y + BALL_R;
-        if (b.passed || (down ? b.vy <= 0 || b.y < line : b.vy >= 0 || b.y > line)) continue;
-        const off = (b.x - this.pad[k]) / (PAD_W / 2 + BALL_R);
+      const toA = b.vy > 0, recv = toA ? 'A' : 'B';
+      // 상대 코트에 한 번 튄다 — 그 자리가 대 밖이면 아웃
+      if (!b.bounced) {
+        const fromLine = toA ? 1 - PAD_Y : PAD_Y, toLine = toA ? PAD_Y : 1 - PAD_Y;
+        const yb = fromLine + (toLine - fromLine) * BOUNCE_S;
+        if (toA ? b.y >= yb : b.y <= yb) {
+          b.bounced = true;
+          if (b.x < 0 || b.x > 1) {
+            (this.fx || (this.fx = [])).push({ type: 'out', x: b.x, y: yb, t: performance.now() });
+            point(b.from, true);
+            break;
+          }
+        }
+      }
+      // 받는 쪽 라켓 줄: 손이 닿는 범위 안이면 받아 친다
+      const line = toA ? PAD_Y - BALL_R : 1 - PAD_Y + BALL_R;
+      if (!b.passed && b.bounced && (toA ? b.y >= line : b.y <= line)) {
+        const off = (b.x - this.pad[recv]) / REACH;
         if (Math.abs(off) <= 1) {
-          const sp = Math.min(MAX_SPEED, Math.hypot(b.vx, b.vy) * 1.05), a = off * 0.9;
-          b.vx = Math.sin(a) * sp; b.vy = (down ? -1 : 1) * Math.abs(Math.cos(a) * sp);
-          b.y = line;
-          ev.push({ k, hit: true });
-          (this.fx || (this.fx = [])).push({ x: b.x, y: line, t: performance.now() });
-          (this.swingT || (this.swingT = { A: -1e9, B: -1e9 }))[k] = performance.now();
+          // 방향 = 맞은 자리(가장자리일수록 바깥으로) + 라켓을 옆으로 움직이던 속도
+          const sp = Math.min(MAX_SPEED, Math.hypot(b.vx, b.vy) * 1.05), a = off * MAX_ANGLE;
+          b.vx = clamp(Math.sin(a) * sp + this.vel[recv] * SWING_V, -0.75 * sp, 0.75 * sp);
+          b.vy = (toA ? -1 : 1) * Math.sqrt(Math.max(sp * sp - b.vx * b.vx, (0.6 * sp) ** 2));
+          b.y = line; b.bounced = false; b.from = recv;
+          ev.push({ k: recv, hit: true });
+          const now = performance.now();
+          (this.fx || (this.fx = [])).push({ x: b.x, y: line, t: now });
+          (this.swingT || (this.swingT = { A: -1e9, B: -1e9 }))[recv] = now;
+          (this.reachAt || (this.reachAt = { A: 0, B: 0 }))[recv] = clamp(b.x - this.pad[recv], -REACH, REACH);
+          // 팔로스루는 공이 나가는 쪽으로 (각 선수 시점의 각도)
+          const aOut = Math.atan2(b.vx, Math.abs(b.vy)) * (recv === 'A' ? 1 : -1);
+          (this.aim || (this.aim = { A: 0.2, B: 0.2 }))[recv] = clamp(aOut * 1.2 + 0.12, -0.7, 0.7);
         } else b.passed = true;
       }
-      if (b.y > 1.04 || b.y < -0.04) {
-        const loser = b.y > 1 ? 'A' : 'B', winner = loser === 'A' ? 'B' : 'A';
-        ev.push({ k: loser, hit: false });
-        this.score[winner]++;
-        this.serve(loser);
-        break;
-      }
+      // 놓친 공: 받는 쪽 끝 너머로 나가면 받는 쪽이 점수를 잃는다
+      if (b.y > 1.04 || b.y < -0.04) { point(b.y > 1 ? 'A' : 'B', false); break; }
     }
     return ev;
   }
@@ -286,7 +292,7 @@ export class PongDuel {
     // 공이 올 때마다 받았는지(1)/놓쳤는지(0) — 모든 경기에서 기록 (실력 측정)
     for (const e of ev) {
       const f = this.arena.flies[e.k];
-      if (mode === 'human' && e.k === 'B') continue;
+      if (e.out || (mode === 'human' && e.k === 'B')) continue;
       f.pong.hits = (f.pong.hits + (e.hit ? '1' : '0')).slice(-5000);
     }
     if (mode !== 'train') return ev;
@@ -294,7 +300,7 @@ export class PongDuel {
     await Promise.all(players.map(async (k, i) => {
       const e = ev.find(x => x.k === k);
       let r = 0, why = '';
-      if (e) [r, why] = e.hit ? [1, '받아냄'] : [-1, '놓침'];
+      if (e) [r, why] = e.hit ? [1, '받아냄'] : e.out ? [-0.6, '아웃'] : [-1, '놓침'];
       else if (appr[k]) {
         const d0 = Math.abs(before[k] - land[k]), d1 = Math.abs(this.pad[k] - land[k]);
         if (d1 < PAD_W * 0.3) [r, why] = [0.1, '자리 잡음'];
@@ -405,56 +411,78 @@ export class PongDuel {
     }
     g.textBaseline = 'alphabetic'; g.textAlign = 'left';
 
-    // 라켓(A 빨강 러버, 위쪽 B 검정 러버). 둘 다 오른손잡이: 손잡이는 선수 오른쪽 아래로 눕고,
-    //   몸에서 먼 쪽으로 뻗을수록 더 눕고, 움직이는 반대쪽으로 살짝 끌린다(보기용 — 물리·초파리 화면과 무관).
-    const bw = PAD_W * tw, first = !this.tilt;
+    // 라켓(A 빨강 러버, 위쪽 B 검정 러버, 둘 다 오른손잡이). 실제 비율에 가까운 크기로 그리고,
+    //   몸(물리의 라켓 위치)에서 공 쪽으로 손을 뻗어 받는 범위(REACH)를 보여 준다 — 보기용, 물리와 같은 범위.
+    const bw = RACKET_W * tw, first = !this.tilt;
     const tilt = this.tilt || (this.tilt = { A: 0, B: 0 });
+    const swT = this.swingT || (this.swingT = { A: -1e9, B: -1e9 }), bl = this.ball;
+    const reachAt = this.reachAt || (this.reachAt = { A: 0, B: 0 }), aim = this.aim || (this.aim = { A: 0.2, B: 0.2 });
+    const ease = x => x * x * (3 - 2 * x);
+    const BACK = -0.35, HIT = 110, REC = 320;
+    const bxNow = L(p.x, c.x), byNow = L(p.y, c.y);
+    const reach = (k, padX) => {
+      const since = now - swT[k];
+      if (since < HIT) return reachAt[k];
+      if (since < HIT + REC) return reachAt[k] * (1 - ease((since - HIT) / REC));
+      const toMe = !bl.passed && (k === 'A' ? bl.vy > 0 : bl.vy < 0);
+      if (!toMe) return 0;
+      const dist = Math.abs(byNow - (k === 'A' ? PAD_Y : 1 - PAD_Y));
+      return clamp(bxNow - padX, -REACH, REACH) * ease(clamp(1 - dist / 0.3, 0, 1));
+    };
+    const swing = k => {
+      const since = now - swT[k];
+      if (since < HIT) return BACK + (aim[k] - BACK) * Math.sin(since / HIT * Math.PI / 2);
+      if (since < HIT + REC) return aim[k] * (1 - ease((since - HIT) / REC));
+      const toMe = !bl.passed && (k === 'A' ? bl.vy > 0 : bl.vy < 0);
+      if (!toMe) return 0;
+      const dist = Math.abs(byNow - (k === 'A' ? PAD_Y : 1 - PAD_Y));
+      return BACK * ease(clamp(1 - dist / 0.32, 0, 1));
+    };
     for (const k of ['A', 'B']) {
-      const own = k === 'A' ? L(p.A, c.A) : 1 - L(p.B, c.B);          // 그 선수 시점의 라켓 위치
+      const own = k === 'A' ? L(p.A, c.A) : 1 - L(p.B, c.B);
       const v = clamp((k === 'A' ? 1 : -1) * (this.vel[k] || 0) / PAD_SPEED, -1, 1);
-      const target = -0.3 - (own - 0.5) * 0.55 - v * 0.08;
+      const target = -0.3 - (own - 0.5) * 0.4 - v * 0.08;
       tilt[k] = first ? target : tilt[k] + (target - tilt[k]) * 0.2;
     }
-    // 휘두르기(보기용): 공이 다가오면 뒤로 젖혔다가(백스윙), 맞는 순간 앞으로 빠르게 휘두르고(팔로스루)
-    //   0.3초에 걸쳐 제자리로. 손목(손잡이 끝 근처)을 축으로 돈다. 물리의 라켓 위치는 그대로다.
-    const swT = this.swingT || (this.swingT = { A: -1e9, B: -1e9 }), bl = this.ball;
-    const ease = x => x * x * (3 - 2 * x);
-    const BACK = -0.35, FWD = 0.55, HIT = 110, REC = 310;
-    const swing = (k, by) => {
-      const since = now - swT[k];
-      if (since < HIT) return { d: BACK + (FWD - BACK) * Math.sin(since / HIT * Math.PI / 2), push: since / HIT };
-      if (since < HIT + REC) { const r = ease((since - HIT) / REC); return { d: FWD * (1 - r), push: 1 - r }; }
-      const appr = !bl.passed && (k === 'A' ? bl.vy > 0 : bl.vy < 0);
-      if (!appr) return { d: 0, push: 0 };
-      const dist = Math.abs(by - (k === 'A' ? PAD_Y : 1 - PAD_Y));
-      return { d: BACK * ease(clamp(1 - dist / 0.32, 0, 1)), push: 0 };
+    const placeRacket = (k, rubber) => {
+      const padX = k === 'A' ? L(p.A, c.A) : L(p.B, c.B);
+      const off = reach(k, padX), sgn = k === 'A' ? 1 : -1;
+      const cx = X(padX + off), cy = Y(k === 'A' ? PAD_Y : 1 - PAD_Y) - sgn * bw * 0.1;
+      // 손을 바깥으로 뻗을수록 라켓이 조금 더 눕는다
+      const rot = (k === 'A' ? 0 : Math.PI) + tilt[k] - sgn * off * 1.4;
+      const d = swing(k), arm = 1.7 * bw / 2;                     // 손목을 축으로 돈다
+      const px = cx - arm * Math.sin(rot), py = cy + arm * Math.cos(rot), r2 = rot + d;
+      drawRacket(g, px + arm * Math.sin(r2), py - arm * Math.cos(r2), bw, rubber, r2, u);
     };
-    const byNow = L(p.y, c.y);
-    const placeSwung = (k, cx, cy, rot) => {
-      const { d, push } = swing(k, byNow), arm = 1.6 * bw / 2;      // 블레이드 중심에서 손목까지
-      const px = cx - arm * Math.sin(rot), py = cy + arm * Math.cos(rot);   // 손목 위치(화면)
-      const r2 = rot + d, toNet = (k === 'A' ? -1 : 1) * push * bw * 0.12;
-      return [px + arm * Math.sin(r2), py - arm * Math.cos(r2) + toNet, r2];
-    };
-    { const [x, y, r] = placeSwung('B', X(L(p.B, c.B)), Y(1 - PAD_Y) + bw * 0.08, Math.PI + tilt.B); drawRacket(g, x, y, bw, 'black', r, u); }
-    { const [x, y, r] = placeSwung('A', X(L(p.A, c.A)), Y(PAD_Y) - bw * 0.08, tilt.A); drawRacket(g, x, y, bw, 'red', r, u); }
+    placeRacket('B', 'black');
+    placeRacket('A', 'red');
 
-    // 라켓에 맞은 순간: 공 자리에서 잠깐 퍼지는 옅은 고리
-    this.fx = (this.fx || []).filter(e => now - e.t < 260);
+    // 라켓에 맞은 순간의 옅은 고리 / 아웃: 공이 떨어진 대 밖 자리에 잠깐 'OUT'
+    this.fx = (this.fx || []).filter(e => now - e.t < (e.type === 'out' ? 900 : 240));
     for (const e of this.fx) {
-      const k = (now - e.t) / 260;
-      g.strokeStyle = `rgba(255,240,220,${0.35 * (1 - k)})`; g.lineWidth = 1.2 * u;
-      g.beginPath(); g.arc(X(e.x), Y(e.y), (5 + 9 * k) * u, 0, Math.PI * 2); g.stroke();
+      if (e.type === 'out') {
+        const kk = (now - e.t) / 900, ox = X(e.x), oy = Y(e.y);
+        g.strokeStyle = `rgba(255,140,120,${0.75 * (1 - kk)})`; g.lineWidth = 1.4 * u;
+        g.beginPath(); g.moveTo(ox - 4 * u, oy - 4 * u); g.lineTo(ox + 4 * u, oy + 4 * u);
+        g.moveTo(ox + 4 * u, oy - 4 * u); g.lineTo(ox - 4 * u, oy + 4 * u); g.stroke();
+        g.fillStyle = `rgba(255,170,150,${0.85 * (1 - kk)})`;
+        g.font = `600 ${9 * u}px "IBM Plex Mono", ui-monospace, monospace`; g.textAlign = 'center';
+        g.fillText('OUT', ox, oy - 8 * u); g.textAlign = 'left';
+        continue;
+      }
+      const kk = (now - e.t) / 240;
+      g.strokeStyle = `rgba(255,240,220,${0.3 * (1 - kk)})`; g.lineWidth = u;
+      g.beginPath(); g.arc(X(e.x), Y(e.y), (4 + 7 * kk) * u, 0, Math.PI * 2); g.stroke();
     }
 
     // 공: 높이(연출) → 그림자 오프셋·크기, 잔상
     const bx = L(p.x, c.x), by = L(p.y, c.y), b = this.ball;
     const from = b.vy > 0 ? 1 - PAD_Y : PAD_Y, s = clamp(Math.abs(by - from) / (2 * PAD_Y - 1), 0, 1.2);
-    const h = s < 0.72 ? Math.sin(Math.PI * s / 0.72) : 0.5 * Math.sin(Math.PI * (s - 0.72) / 0.56);
+    const h = s < BOUNCE_S ? Math.sin(Math.PI * s / BOUNCE_S) : 0.5 * Math.sin(Math.PI * (s - BOUNCE_S) / (2 * (1 - BOUNCE_S)));
     const hh = Math.max(0, h);
     this.trail = (this.trail || []).filter(q => now - q.t < 140);
     this.trail.push({ x: bx, y: by, h: hh, t: now });
-    const br = BALL_R * tw * 0.9;
+    const br = BALL_R * tw * 0.6;                           // 실제 공(40mm)과 라켓(150mm) 비율에 가깝게
     g.fillStyle = `rgba(0,0,0,${0.35 - hh * 0.15})`;
     g.beginPath(); g.ellipse(X(bx) + hh * 7 * u, Y(by) + hh * 12 * u, br * (1 + hh * 0.3), br * 0.8 * (1 + hh * 0.3), 0, 0, Math.PI * 2); g.fill();
     for (const q of this.trail) {
