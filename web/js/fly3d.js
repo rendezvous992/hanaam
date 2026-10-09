@@ -935,10 +935,11 @@ export class Fly3D {
   }
 
   // ── TV (실험실): 화면 텍스처 = 초파리 광수용체에 들어가는 바로 그 캔버스 ──
-  // 16:9 패널에 4:3 자극 화면을 좌우 검은 띠로 띄운다(필러박스). 얇은 테두리, 유리, 뒤판, 바닥 스탠드, 전원선.
+  // 4:3 패널에 4:3 자극 화면을 꽉 차게 띄운다 (늘리거나 자르지 않는다 — 초파리가 보는 그림 그대로).
+  // 얇은 테두리, 유리, 뒤판, 바닥 스탠드, 전원선.
   _buildTV(env) {
     const tvG = this.tvG = new THREE.Group();
-    const PW = 3.2, PH = 1.8, PICW = PH * 4 / 3, BZ = 0.04, CHIN = 0.075, CY = 2.2;
+    const PH = 2.1, PW = PH * 4 / 3, PICW = PW, BZ = 0.04, CHIN = 0.075, CY = 2.25;
     const CW = PW + 2 * BZ, CH = PH + BZ + CHIN, D = 0.055;
     const casingMat = new THREE.MeshStandardMaterial({ color: srgb(0x141518), roughness: 0.42, metalness: 0.25,
       envMap: env, envMapIntensity: 0.6 });
@@ -946,7 +947,7 @@ export class Fly3D {
     casing.position.set(0, CY - (CHIN - BZ) / 2, 0);
     casing.castShadow = true;
     const zf = D / 2;                                     // 앞면
-    // 패널(꺼진 화면·필러박스): 반사는 위 유리층이 맡는다
+    // 패널(꺼진 화면): 반사는 위 유리층이 맡는다
     const panel = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH),
       new THREE.MeshStandardMaterial({ color: srgb(0x07080a), roughness: 0.6 }));
     panel.position.set(0, CY, zf + 0.0015);
