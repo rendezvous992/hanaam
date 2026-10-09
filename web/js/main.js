@@ -6,6 +6,7 @@ import { fetchBin, loadVision } from './data.js';
 import { FlyEye } from './vision.js';
 import { Lab } from './lab.js';
 import { OmokArena } from './arena.js';
+import { Experience } from './experience.js';
 
 // 행동 판독 그룹 순서 (워커의 비트마스크 순서와 일치해야 함)
 const READOUT_KEYS = ['fwd', 'back', 'jump', 'prob', 'dn', 'motor'];
@@ -92,6 +93,8 @@ async function main() {
       },
     };
     step.textContent = '커넥톰 데이터를 불러오는 중…';
+    // 버섯체 학습 회로 (경험 모드) — 없으면 경험 섹션만 숨긴다
+    const mbP = fetch('data/mb.json').then(r => r.ok ? r.json() : null).catch(() => null);
     const [meta, posBuf, groupBuf, indptrBuf, targetsBuf, weightsBuf] = await Promise.all([
       fetch('data/meta.json').then(r => r.json()),
       fetchBinTracked('data/positions_u16.bin', progress),
@@ -150,6 +153,16 @@ async function main() {
     }
     const rates = { fwd: 0, back: 0, jump: 0, prob: 0, dn: 0, motor: 0 };
     window.__fly = fly;   // 테스트용
+
+    // ── 경험과 변화: 습관화·냄새 기억·내성 (워커의 경험 모드) ──
+    const exp = new Experience({ worker, fly, meta });
+    window.__exp = exp;
+    mbP.then(mb => {
+      // ?noexp: 경험 모드 없이 (연결체 그대로인 뇌 — 비교·테스트용)
+      if (!mb || location.search.includes('noexp')) { $('exp').hidden = true; return; }
+      const sensory = Object.fromEntries(Object.entries(meta.presets).map(([k, p]) => [k, p.idx]));
+      worker.postMessage({ type: 'plastic', sensory, ...mb });
+    });
 
     // ── 실험실(TV·탁구)과 오목 경기장: 초파리 눈 데이터가 있어야 켜진다 ──
     let lab = null, arena = null, arenaOpen = false;
@@ -230,7 +243,7 @@ async function main() {
     let emaRate = 0;
     worker.onmessage = (e) => {
       const m = e.data;
-      if (m.type !== 'frame') return;
+      if (m.type !== 'frame') { exp.onMessage(m); return; }
       const glow = new Uint8Array(m.glow);
       renderer.updateGlow(glow);
       worker.postMessage({ type: 'buffer', buf: m.glow }, [m.glow]);
@@ -279,6 +292,7 @@ async function main() {
         const on = !b.classList.contains('on');
         b.classList.toggle('on', on);
         worker.postMessage({ type: 'stim', key, on, indices: p.idx });
+        if (key === 'smell') exp.setSmell(on);
       };
       stimBox.appendChild(b);
     }
@@ -323,7 +337,7 @@ async function main() {
       const v = +e.target.value / 100;
       $('ethanol-val').textContent = ethanolWord(v);
       send({ ethanol: v });
-      fly.setEthanol(v);
+      exp.setDrugs(v, undefined);      // 3D 초파리에는 내성만큼 덜 듣는다
       $('fly-sub').textContent = v === 0 ? '행동 (뇌 → 몸)' :
         `혈중 에탄올 ${(v * 0.4).toFixed(2)} g/dL`;
     };
@@ -331,7 +345,7 @@ async function main() {
       const v = +e.target.value / 100;
       $('nic-val').textContent = nicotineWord(v);
       send({ nicotine: v });
-      fly.setNicotine(v);
+      exp.setDrugs(undefined, v);
     };
     $('speed').oninput = e => {
       $('speed-val').textContent = '×' + e.target.value;

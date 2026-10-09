@@ -23,6 +23,7 @@ const TV_X = 1.75;        // TV 위치
 const TV_ROT = -0.78;     // TV 방향: 시청 자리의 초파리를 보면서 무대 카메라에도 화면이 보이게
 const WATCH_X = -0.95;    // TV 앞 시청 자리
 const WALL_Z = -7.5;
+const ODOR_X = 2.45, ODOR_Z = 1.3;   // 냄새 근원(발효한 바나나 조각) 위치 — 다리와 겹치지 않게 앞쪽
 const OUTLET = [4.6, 0.56];   // 벽 콘센트 (x, y) — TV 전원선이 여기로 간다
 // (THREE가 없을 때도 모듈은 읽혀야 SVG 폴백이 돈다 — 색 상수는 생성자에서 만든다)
 let TV_WHITE, LED_ON, LED_OFF;
@@ -351,6 +352,10 @@ export class Fly3D {
     this._chroma = new THREE.Color();
     this.watchT = 0;
     this.tvLabel = '';
+    this.odorOn = false;       // 냄새 자극 켜짐 → 바나나 조각이 나타난다
+    this.val = 0;              // 지금 맡는 냄새에 대해 배운 가치 (−1 싫어함 … +1 좋아함)
+    this.valS = 0;
+    this.fruitO = 0;
     this.rates = { fwd: 0, back: 0, jump: 0, prob: 0, dn: 0, motor: 0, brain: 0 };
     this.s = { fwd: 0, back: 0, jump: 0, prob: 0 };
     this.behavior = '대기';
@@ -448,6 +453,7 @@ export class Fly3D {
     scene.add(mkFadeGroup(this._buildBalcony(aniso)));
     scene.add(mkFadeGroup(this._buildTub(env)));
     scene.add(mkFadeGroup(this._buildTV(env)));
+    scene.add(mkFadeGroup(this._buildFruit(scene)));
     this.tvLight = new THREE.PointLight(TV_WHITE.clone(), 0, 7.5, 2);   // 화면 빛이 얼굴을 비춘다
     this.tvLight.position.copy(this.tvG.localToWorld(V3(0, 2.15, 0.9)));
     scene.add(this.tvLight);
@@ -589,6 +595,109 @@ export class Fly3D {
       scene.add(sp);
       this.smoke.push({ sp, age: i / 14, alive: false, o: V3(), seed: Math.random() * 10, spin: (Math.random() - 0.5) * 0.6 });
     }
+  }
+
+  // ── 냄새 근원: 바닥에 떨어진 발효한 바나나 조각 + 피어오르는 냄새 ──
+  _buildFruit(scene) {
+    const g = this.fruitG = new THREE.Group();
+    g.position.set(ODOR_X, 0, ODOR_Z);
+    g.rotation.y = 0.35;
+    // 껍질: 길이 방향 u, 둘레 v. 노란 바탕 + 익어서 생긴 갈색 반점 + 다섯 모서리 줄, 양 끝은 갈변
+    const peelTex = canvasTex(256, 256, (c, W, H) => {
+      const r = rng(11);
+      c.fillStyle = '#dcb944'; c.fillRect(0, 0, W, H);
+      for (let k = 0; k < 5; k++) {           // 모서리 사이 면마다 살짝 다른 밝기
+        const y0 = k / 5 * H, gr = c.createLinearGradient(0, y0, 0, y0 + H / 5);
+        gr.addColorStop(0, 'rgba(120,88,20,0.28)'); gr.addColorStop(0.5, 'rgba(255,236,150,0.18)'); gr.addColorStop(1, 'rgba(120,88,20,0.28)');
+        c.fillStyle = gr; c.fillRect(0, y0, W, H / 5);
+      }
+      for (const x0 of [0, W]) {               // 자른 끝 근처 갈변
+        const gr = c.createLinearGradient(x0, 0, x0 === 0 ? W * 0.18 : W * 0.82, 0);
+        gr.addColorStop(0, 'rgba(110,72,24,0.55)'); gr.addColorStop(1, 'rgba(110,72,24,0)');
+        c.fillStyle = gr; c.fillRect(0, 0, W, H);
+      }
+      for (let i = 0; i < 140; i++) {          // 반점 (작은 것 많이, 큰 것 조금)
+        const x = r() * W, y = r() * H, rad = r() < 0.85 ? 0.8 + r() * 2.2 : 3 + r() * 5;
+        c.fillStyle = `rgba(${62 + r() * 30},${38 + r() * 18},14,${0.3 + r() * 0.5})`;
+        c.beginPath(); c.ellipse(x, y, rad * 1.6, rad, 0, 0, Math.PI * 2); c.fill();
+      }
+    }, { aniso: this.aniso });
+    // 단면: 크림색 과육, 가운데 옅은 심과 아주 작은 씨 점, 가장자리 얇은 껍질 테
+    const capTex = canvasTex(128, 128, (c, W) => {
+      const r = rng(5), C = W / 2;
+      const rg = c.createRadialGradient(C, C, 0, C, C, C);
+      rg.addColorStop(0, '#e9dcb4'); rg.addColorStop(0.22, '#f4ead0'); rg.addColorStop(0.86, '#f1e4c2');
+      rg.addColorStop(0.9, '#d9c88a'); rg.addColorStop(0.94, '#cdb34e'); rg.addColorStop(1, '#a98a33');
+      c.fillStyle = rg; c.fillRect(0, 0, W, W);
+      c.strokeStyle = 'rgba(200,180,130,0.25)'; c.lineWidth = 1;
+      for (let i = 0; i < 18; i++) {           // 결 (가운데서 퍼지는 가는 줄)
+        const a = i / 18 * Math.PI * 2;
+        c.beginPath(); c.moveTo(C + Math.cos(a) * W * 0.12, C + Math.sin(a) * W * 0.12);
+        c.lineTo(C + Math.cos(a) * W * 0.4, C + Math.sin(a) * W * 0.4); c.stroke();
+      }
+      for (let i = 0; i < 3; i++) {            // 세 갈래 심 + 씨 점
+        const a = i / 3 * Math.PI * 2 + 0.4;
+        c.fillStyle = 'rgba(214,196,150,0.8)';
+        c.beginPath(); c.ellipse(C + Math.cos(a) * W * 0.06, C + Math.sin(a) * W * 0.06, W * 0.06, W * 0.025, a, 0, Math.PI * 2); c.fill();
+        for (let k = 0; k < 4; k++) {
+          const d = W * (0.03 + r() * 0.07);
+          c.fillStyle = `rgba(70,52,34,${0.45 + r() * 0.3})`;
+          c.beginPath(); c.arc(C + Math.cos(a + (r() - 0.5) * 0.5) * d, C + Math.sin(a + (r() - 0.5) * 0.5) * d, 0.9 + r() * 0.6, 0, Math.PI * 2); c.fill();
+        }
+      }
+    });
+    const peelMat = new THREE.MeshStandardMaterial({ map: peelTex, roughness: 0.55, side: THREE.DoubleSide });
+    const capMat = new THREE.MeshStandardMaterial({ map: capTex, roughness: 0.7 });
+    // 살짝 휜 오각기둥(바나나 토막): 바닥에 누운 호를 따라 둥근 오각 단면을 쓸어 만든다
+    const R = 0.21, ARC = 1.9, ANG = 0.5, NU = 20, NV = 40;
+    const pos = [], uv = [], ix = [];
+    const frame = u => {
+      const a = -ANG / 2 + ANG * u;
+      return { c: V3(Math.sin(a) * ARC, R, ARC - Math.cos(a) * ARC), t: V3(Math.cos(a), 0, Math.sin(a)), nrm: V3(-Math.sin(a), 0, Math.cos(a)) };
+    };
+    for (let i = 0; i <= NU; i++) {
+      const u = i / NU, f = frame(u), taper = 1 - 0.1 * Math.abs(u - 0.5) * 2;
+      for (let j = 0; j <= NV; j++) {
+        const v = j / NV * Math.PI * 2, rr = R * taper * (1 + 0.06 * Math.cos(5 * v));
+        const p = f.c.clone().addScaledVector(f.nrm, Math.cos(v) * rr);
+        p.y += Math.sin(v) * rr;
+        pos.push(p.x, p.y, p.z); uv.push(u, j / NV);
+      }
+    }
+    for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) {
+      const a = i * (NV + 1) + j, b2 = a + NV + 1;
+      ix.push(a, b2, a + 1, b2, b2 + 1, a + 1);
+    }
+    const pg = new THREE.BufferGeometry();
+    pg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    pg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    pg.setIndex(ix); pg.computeVertexNormals();
+    const peel = new THREE.Mesh(pg, peelMat);
+    peel.castShadow = true; peel.receiveShadow = true;
+    g.add(peel);
+    for (const u of [0, 1]) {                  // 자른 두 단면
+      const f = frame(u), taper = 0.9;
+      const cap = new THREE.Mesh(new THREE.CircleGeometry(R * taper * 1.03, 40), capMat);
+      cap.position.copy(f.c);
+      cap.quaternion.setFromUnitVectors(V3(0, 0, 1), u ? f.t : f.t.clone().negate());
+      g.add(cap);
+    }
+    g.position.x -= 0.15;
+    // 바닥에 번진 즙 얼룩
+    const juice = new THREE.Mesh(new THREE.CircleGeometry(0.5, 32),
+      new THREE.MeshStandardMaterial({ color: srgb(0x5a4420), roughness: 0.3, transparent: true, opacity: 0.22, depthWrite: false }));
+    juice.rotation.x = -Math.PI / 2; juice.position.set(0, 0.004, 0.12); juice.scale.set(1.3, 0.6, 1);
+    g.add(juice);
+    // 냄새 입자: 조각 위에서 옅게 피어오른다
+    const tex = smokeTex();
+    this.odorPuffs = [];
+    for (let i = 0; i < 8; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: srgb(0xdfe3a8), transparent: true, opacity: 0, depthWrite: false }));
+      sp.visible = false; sp.userData.noFade = true;
+      scene.add(sp);
+      this.odorPuffs.push({ sp, age: i / 8, seed: Math.random() * 10 });
+    }
+    return g;
   }
 
   // ── 와인병(눕는다) + 와인잔 + 웅덩이 ─────────
@@ -1077,6 +1186,8 @@ export class Fly3D {
   setRates(r) { Object.assign(this.rates, r); }
   setEthanol(v) { this.eth = v; }
   setNicotine(v) { this.nic = v; }
+  setOdor(on) { this.odorOn = !!on; }
+  setValence(v) { this.val = Math.max(-1, Math.min(1, v || 0)); }
 
   // 소품 그룹 페이드: 다 나타나면 불투명 재질로 돌려 정렬·깊이 문제를 없앤다
   _fade(group, o) {
@@ -1212,8 +1323,35 @@ export class Fly3D {
     this.tvFloorMat.color.copy(tint);
     this.tvFloorMat.opacity = pw * (0.015 + 0.12 * lum);
 
+    // 냄새 기억: 냄새가 나는 동안, 버섯체에 남은 그 냄새의 가치대로 바나나 조각에 다가가거나 피한다
+    this.valS = ease(this.valS, this.odorOn ? this.val : 0, 2);
+    const odorV = this.valS;
+    const wantOdor = this.odorOn && Math.abs(odorV) > 0.12 && !this.tvOn && upright > 0.7 && !flying &&
+                     this.jumpT < 0 && !feeding && !wantSip && !wantBath && !wantStand && this.bathT < 0.2 && this.standT < 0.2;
+    let odorWalk = 0, odorNear = false;
+    if (wantOdor) {
+      const goal = odorV > 0 ? ODOR_X - 1.05 : -BOUND + 0.45;
+      const dxo = goal - this.x;
+      if (Math.abs(dxo) > 0.15) { odorWalk = Math.sign(dxo) * Math.min(1, 0.45 + Math.abs(odorV)); this.dir = Math.sign(dxo) || 1; }
+      else { odorNear = true; this.dir = odorV > 0 ? 1 : -1; }
+    }
+    this.fruitO = ease(this.fruitO, this.odorOn ? 1 : 0, 3);
+    this._fade(this.fruitG, this.fruitO);
+    for (const p of this.odorPuffs) {
+      p.age += dt / 3.4;
+      if (p.age >= 1) { p.age -= 1; p.seed = Math.random() * 10; }
+      const a = p.age, on = this.fruitO > 0.02;
+      p.sp.visible = on;
+      if (!on) continue;
+      p.sp.position.set(ODOR_X - 0.15 + Math.sin(this.t * 0.8 + p.seed * 5) * 0.16 * a - 0.1 * a, 0.45 + a * 1.5,
+                        ODOR_Z + Math.cos(this.t * 0.6 + p.seed * 3) * 0.1 * a);
+      const sc = 0.18 + a * 0.8;
+      p.sp.scale.set(sc, sc, 1);
+      p.sp.material.opacity = Math.pow(Math.sin(Math.PI * a), 1.4) * 0.16 * this.fruitO;
+    }
+
     // 그루밍: 한가할 때 가끔 앞다리를 비빈다
-    const propWalk = sipWalk || standWalk || bathWalk || watchWalk;
+    const propWalk = sipWalk || standWalk || bathWalk || watchWalk || odorWalk;
     const idle = Math.abs(speed) <= 0.06 && propWalk === 0 && !airborne &&
                  upright > 0.9 && !feeding && !sipping && this.hicT <= 0 &&
                  this.standT < 0.2 && this.bathT < 0.2 && this.watchT < 0.2;
@@ -1423,6 +1561,8 @@ export class Fly3D {
       this.bathT > 0.5 ? '욕조 반신욕' :
       this.watchT > 0.5 && this.prob <= 0.3 ? this.tvLabel :
       sipping || this.sip > 0.4 ? '와인 홀짝' :
+      odorWalk !== 0 ? (odorV > 0 ? '냄새 쪽으로 다가감' : '냄새를 피해 달아남') :
+      odorNear ? (odorV > 0 ? '좋아하는 냄새 곁에 머묾' : '냄새에서 멀찍이 피함') :
       this.hicT > 0 ? '딸꾹질' :
       speed < -0.06 ? '문워크' :
       walking ? (eth > 0.25 ? '갈지자 걸음' : '걷는 중') :

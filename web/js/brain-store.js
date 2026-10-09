@@ -6,6 +6,7 @@
 //   인덱스는 정렬된 차이를 varint로, 가중치는 float32로 → base64 → 문서당 ~200KB 조각.
 // 문서 구조: flies/<id> (이름·기록·훈련 이력·현재 조각 버전) — 초파리마다 하나,
 //            flies/<id>/brain/<버전>_<i> (뇌 조각)
+// 메인 초파리의 경험(버섯체 기억·내성)은 같은 방식으로 mainfly/<id> 아래에 둔다.
 
 const CHUNK = 200000;          // base64 글자 수 (문서 한도 256KiB 아래)
 const MAX_PRAISE = 5000;       // 판별 칭찬 비율 이력 상한
@@ -51,7 +52,8 @@ export function decodeDiff(u8) {
 }
 
 export class BrainStore {
-  constructor() {
+  constructor(base = 'flies', trim = trimMeta) {
+    this.base = base; this.trim = trim;
     this.db = null; this.canWrite = false;
     this.state = 'local';          // 'local' | 'shared' | 'readonly'
     this.queue = Promise.resolve();
@@ -74,7 +76,7 @@ export class BrainStore {
   async list() {
     await this.ready;
     if (!this.db) return [];
-    const q = await this.db.collection('flies').limit(200).get();
+    const q = await this.db.collection(this.base).limit(200).get();
     return q.docs.filter(d => d.exists).map(d => ({ id: d.id, ...d.data() }));
   }
 
@@ -82,13 +84,13 @@ export class BrainStore {
   async load(k) {
     await this.ready;
     if (!this.db) return null;
-    const snap = await this.db.doc(`flies/${k}`).get();
+    const snap = await this.db.doc(`${this.base}/${k}`).get();
     if (!snap.exists) return null;
     const meta = snap.data();
     let diff = null;
     if (meta.ver && meta.chunks) {
       const parts = await Promise.all(Array.from({ length: meta.chunks },
-        (_, i) => this.db.doc(`flies/${k}/brain/${meta.ver}_${i}`).get()));
+        (_, i) => this.db.doc(`${this.base}/${k}/brain/${meta.ver}_${i}`).get()));
       if (parts.every(s => s.exists)) diff = decodeDiff(fromB64(parts.map(s => s.data().d).join('')));
       else meta.broken = true;   // 다른 창이 막 저장하는 중 — 기록만 가져온다
     }
@@ -107,10 +109,10 @@ export class BrainStore {
     if (!this.db || !this.canWrite) return Promise.resolve(false);
     return this.enqueue(async () => {
       try {
-        const ref = this.db.doc(`flies/${k}`);
+        const ref = this.db.doc(`${this.base}/${k}`);
         const cur = await ref.get();
         const keep = cur.exists ? { ver: cur.data().ver || null, chunks: cur.data().chunks || 0 } : { ver: null, chunks: 0 };
-        await ref.set({ ...trimMeta(meta), ...keep, updatedAt: Date.now() });
+        await ref.set({ ...this.trim(meta), ...keep, updatedAt: Date.now() });
         return true;
       } catch (e) { return this.fail(e); }
     });
@@ -121,17 +123,17 @@ export class BrainStore {
     if (!this.db || !this.canWrite) return Promise.resolve(false);
     return this.enqueue(async () => {
       try {
-        const ref = this.db.doc(`flies/${k}`);
+        const ref = this.db.doc(`${this.base}/${k}`);
         const cur = await ref.get();
         const old = cur.exists ? cur.data() : null;
         const b64 = idx.length ? toB64(encodeDiff(idx, val)) : '';
         const ver = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         const chunks = Math.ceil(b64.length / CHUNK);
         for (let i = 0; i < chunks; i++)
-          await this.db.doc(`flies/${k}/brain/${ver}_${i}`).set({ d: b64.slice(i * CHUNK, (i + 1) * CHUNK) });
-        await ref.set({ ...trimMeta(meta), ver: chunks ? ver : null, chunks, bytes: b64.length, updatedAt: Date.now() });
+          await this.db.doc(`${this.base}/${k}/brain/${ver}_${i}`).set({ d: b64.slice(i * CHUNK, (i + 1) * CHUNK) });
+        await ref.set({ ...this.trim(meta), ver: chunks ? ver : null, chunks, bytes: b64.length, updatedAt: Date.now() });
         if (old?.ver) for (let i = 0; i < (old.chunks || 0); i++)
-          await this.db.doc(`flies/${k}/brain/${old.ver}_${i}`).delete().catch(() => {});
+          await this.db.doc(`${this.base}/${k}/brain/${old.ver}_${i}`).delete().catch(() => {});
         return true;
       } catch (e) { return this.fail(e); }
     });
@@ -142,12 +144,12 @@ export class BrainStore {
     if (!this.db || !this.canWrite) return Promise.resolve(false);
     return this.enqueue(async () => {
       try {
-        const ref = this.db.doc(`flies/${id}`);
+        const ref = this.db.doc(`${this.base}/${id}`);
         const cur = await ref.get();
         if (cur.exists) {
           const m = cur.data();
           if (m.ver) for (let i = 0; i < (m.chunks || 0); i++)
-            await this.db.doc(`flies/${id}/brain/${m.ver}_${i}`).delete().catch(() => {});
+            await this.db.doc(`${this.base}/${id}/brain/${m.ver}_${i}`).delete().catch(() => {});
         }
         await ref.delete();
         return true;

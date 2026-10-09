@@ -144,6 +144,14 @@ onmessage = (e) => {
     for (let q = 0; q < idx.length; q++) if (idx[q] < weights.length) { weights[idx[q]] = bound(idx[q], val[q]); chg[idx[q]] = 1; k++; }
     nChg = k;
     postMessage({ type: 'imported', id: m.id, changed: k });
+  } else if (m.type === 'plastic') {
+    plasticInit(m);
+  } else if (m.type === 'plasticReset') {
+    plasticReset(m.what || 'all');
+  } else if (m.type === 'exportMem') {
+    postMessage({ type: 'mem', id: m.id, ...exportMem() });
+  } else if (m.type === 'importMem') {
+    postMessage({ type: 'memImported', id: m.id, changed: importMem(m) });
   } else if (m.type === 'stim') {
     // rate 미지정 시 전역 stimRate 사용 (명령 뉴런은 강한 고정 자극)
     if (m.on) stimActive[m.key] = { idx: new Uint32Array(m.indices), rate: m.rate || 0 };
@@ -206,14 +214,16 @@ function reinforceCell(post, r, eta) {
 }
 
 function step() {
-  const eth = ethanol;
+  // 내성: 같은 양을 넣어도 뇌가 받는 효과가 줄어든다 (경험 모드에서만 쌓임)
+  const eth = pl ? ethanol * (1 - pl.tolE) : ethanol;
+  const nic = pl ? nicotine * (1 - pl.tolN) : nicotine;
   // 에탄올 곡선: 저용량 임계값↓(들뜸), 고용량 임계값↑(진정)
   const thrEff = THR * (1 - 0.25 * eth + 1.6 * Math.max(0, eth - 0.55));
   const inhBoost = 1 + 1.2 * eth;          // GABA/GLUT 강화
   // 니코틴: 초파리 뇌의 주 흥분성 전달물질이 ACh라서, 흥분성 시냅스를 증폭시킨다
-  const excBoost = 1 + 0.6 * nicotine;
-  const noiseAmp = 6 * eth + 2 * nicotine; // 막 노이즈
-  const noiseFrac = (eth > 0 || nicotine > 0) ? 0.08 : 0;
+  const excBoost = 1 + 0.6 * nic;
+  const noiseAmp = 6 * eth + 2 * nic;      // 막 노이즈
+  const noiseFrac = (eth > 0 || nic > 0) ? 0.08 : 0;
 
   // 1) 누수(감쇠) + 적응 회복
   for (let i = 0; i < n; i++) {
@@ -261,6 +271,7 @@ function step() {
       glow[i] = 1;
       if (watchPos !== null && watchPos[i] >= 0) watchCounts[watchPos[i]]++;
       if (probing) probeCounts[i]++;
+      if (spkWin !== null) spkWin[i]++;
       if (readoutMask !== null && readoutMask[i]) {
         const mb = readoutMask[i];
         for (let g = 0; g < nReadouts; g++) if (mb & (1 << g)) readoutCounts[g]++;
@@ -277,6 +288,7 @@ function step() {
     glow[i] *= GLOW_DECAY;
   }
   tick++;
+  if (pl !== null && ++pl.tick >= PL_WIN) { pl.tick = 0; plasticUpdate(); }
   return spikes;
 }
 
@@ -315,4 +327,245 @@ function loop() {
   }, watch ? [buf.buffer, watch.buffer] : [buf.buffer]);
 
   setTimeout(loop, 12);
+}
+
+// ── 경험 모드(메인 초파리): 자극이 쌓이면 뇌가 바뀐다 ─────────────────
+// 세 가지 가소성. 실제로는 수 분~수 시간 걸리는 변화를 시뮬레이션 시간 몇 초로 압축했다.
+//  1) 습관화(감각 시냅스 억압): 계속 발화하는 감각 뉴런의 출력 시냅스가 약해지고, 쉬면 회복된다.
+//  2) 버섯체 연합 기억: 자극을 받은 케년세포(KC)와 같은 구획의 도파민 뉴런(DAN)이 함께 활동하면
+//     그 KC → MBON 시냅스가 약해진다(장기 억압, Hige et al. 2015; Cohn et al. 2015).
+//     KC 입력 없이 DAN만 활동하면 약해졌던 시냅스가 원래대로 돌아온다(Berry et al. 2018).
+//     보상(PAM) 구획 MBON은 회피를, 처벌(PPL1) 구획 MBON은 다가가기를 부추기므로(Aso et al. 2014)
+//     냄새 + 단맛 → 회피 출력 감소 → 그 냄새를 좋아하게 된다.
+//     KC가 '무슨 자극'에 반응하는지는 감각 뉴런의 실제 발화 × 연결체의 2시냅스 직통 경로(상위 5% KC)로
+//     정한다 — 이 모델의 KC 발화는 자극 몇 ms 뒤 뇌 전체 점화에 휩쓸려 자극끼리 구별되지 않는다.
+//  3) 내성: 에탄올·니코틴에 노출될수록 같은 양의 효과가 줄고, 끊으면 천천히 돌아온다.
+let pl = null, spkWin = null;
+const PL_WIN = 100;                         // 갱신 주기: 100틱 = 모의 50ms
+const PL_DT = PL_WIN * DT / 1000;           // s
+const HAB_K = 0.004, HAB_TAU = 8;           // 억압 속도(1/스파이크), 회복 시간상수(s)
+const HAB_FLOOR = { sight: 0.7 };           // 기본 바닥 0.3 (빛은 광적응 수준만)
+const REF_HZ = 50;                          // 감각 입력 기준 발화율 (자극 강도 기본값)
+const KC_TAU = 0.4;                         // KC 자격 흔적 감쇠(s)
+const DAN_MARGIN = 8, DAN_SPAN = 30;        // 평소(직전 맥락)보다 이만큼(Hz) 넘게 오른 도파민만 학습 신호
+const DAN_SMOOTH = 0.3;                     // 구획 DAN이 1~3개뿐이라 창마다 들쭉날쭉 → 지수평활
+const LTD = 0.05, LTP = 0.015, W_FLOOR_MB = 0.15, FORGET_TAU = 900;
+const TOL_UP = 1 / 3, TOL_DOWN = 1 / 40, TOL_MAX = 0.6;
+const US_SUGAR = 60, US_BITTER = 100, US_ETH = 30;  // 무조건 자극이 켜는 도파민 뉴런 발화율(Hz) — PPL1은 전뇌 점화로 이미 ~35Hz라 더 세게
+
+function plasticInit(m) {
+  const sens = {}, all = new Set();
+  for (const [k, idx] of Object.entries(m.sensory)) { sens[k] = Uint32Array.from(idx); for (const i of idx) all.add(i); }
+  const sIdx = Uint32Array.from(all);
+  const sPos = new Map(); sIdx.forEach((i, q) => sPos.set(i, q));
+  const floor = new Float32Array(sIdx.length).fill(0.3);
+  for (const [k, f] of Object.entries(HAB_FLOOR)) if (sens[k]) for (const i of sens[k]) floor[sPos.get(i)] = Math.max(floor[sPos.get(i)], f);
+  const sensQ = {};
+  for (const k in sens) sensQ[k] = Uint32Array.from(sens[k], i => sPos.get(i));
+  const kc = Uint32Array.from(m.kc), mbon = Uint32Array.from(m.mbon);
+  const mPos = new Int16Array(n).fill(-1); mbon.forEach((i, q) => { mPos[i] = q; });
+  const pamSet = new Set(m.pam), pplSet = new Set(m.ppl1);
+  // 각 MBON의 구획 DAN 중 그 MBON 계열(PAM/PPL1)에 속하는 것
+  const famDan = m.comp_dan.map((ds, q) => Uint32Array.from(ds.filter(d =>
+    m.family[q] === 'PAM' ? pamSet.has(d) : m.family[q] === 'PPL1' ? pplSet.has(d) : false)));
+  const sj = [], sk = [], sm = [];
+  for (let k = 0; k < kc.length; k++) {
+    const i = kc[k];
+    for (let j = indptr[i]; j < indptr[i + 1]; j++) {
+      const q = mPos[targets[j]];
+      if (q >= 0 && m.valence[q] !== 0 && famDan[q].length && orig[j] !== 0) { sj.push(j); sk.push(k); sm.push(q); }
+    }
+  }
+  // 자극별 KC 코드 (KC 위치, 0..1 세기 × 버섯체로 가는 길의 굵기)
+  const cs = {};
+  for (const [k, c] of Object.entries(m.cs || {})) {
+    if (!sens[k]) continue;
+    const code = new Float32Array(kc.length);
+    c.kc.forEach((q, t) => { code[q] = c.w[t]; });
+    cs[k] = { code, strength: c.strength };
+  }
+  pl = {
+    tick: 0, sens, sensQ, sIdx, floor, hg: new Float32Array(sIdx.length).fill(1), hgOn: new Float32Array(sIdx.length).fill(1),
+    kc, mbon, val: Int8Array.from(m.valence), fam: m.family.slice(), famDan,
+    pam: Uint32Array.from(m.pam), ppl1: Uint32Array.from(m.ppl1),
+    synJ: Uint32Array.from(sj), synK: Uint16Array.from(sk), synM: Uint8Array.from(sm),
+    cs, e: new Float32Array(kc.length), g: new Float32Array(mbon.length), danBase: new Float32Array(mbon.length), danHz: new Float32Array(mbon.length),
+    act: {}, tolE: 0, tolN: 0, win: 0, us: { pam: 0, ppl1: 0 },
+  };
+  spkWin = new Uint16Array(n);
+  postMessage({ type: 'plasticReady', synapses: sj.length, sensory: sIdx.length });
+}
+
+// 감각 뉴런 q의 출력 시냅스를 습관화 이득대로 다시 쓴다
+function applyHab(q) {
+  const i = pl.sIdx[q], gq = pl.hg[q];
+  for (let j = indptr[i], b = indptr[i + 1]; j < b; j++) weights[j] = orig[j] * gq;
+  pl.hgOn[q] = gq;
+}
+
+const habOf = k => {
+  const qs = pl.sensQ[k];
+  if (!qs || !qs.length) return 1;
+  let s = 0;
+  for (let t = 0; t < qs.length; t++) s += pl.hg[qs[t]];
+  return s / qs.length;
+};
+
+function plasticUpdate() {
+  const P = pl, dt = PL_DT;
+  // 1) 습관화 + 자극별 실제 출력 (발화 × 남은 시냅스 세기, 기준 발화율 대비)
+  const rec = dt / HAB_TAU;
+  for (let q = 0; q < P.sIdx.length; q++) {
+    const c = spkWin[P.sIdx[q]];
+    let gq = P.hg[q];
+    gq += -HAB_K * c * gq + (1 - gq) * rec;
+    if (gq < P.floor[q]) gq = P.floor[q]; else if (gq > 1) gq = 1;
+    P.hg[q] = gq;
+    if (Math.abs(gq - P.hgOn[q]) > 0.01 || (gq === 1 && P.hgOn[q] !== 1)) applyHab(q);
+  }
+  for (const k in P.cs) {
+    const qs = P.sensQ[k];
+    let s = 0;
+    for (let t = 0; t < qs.length; t++) s += spkWin[P.sIdx[qs[t]]] * P.hg[qs[t]];
+    P.act[k] = Math.min(1.5, s / qs.length / (REF_HZ * dt));
+  }
+  // 2) KC 자격 흔적: 지금 들어오는 자극 코드 (빨리 오르고 천천히 사그라든다)
+  const dec = Math.exp(-dt / KC_TAU);
+  for (let q = 0; q < P.e.length; q++) P.e[q] *= dec;
+  for (const k in P.cs) {
+    const a = P.act[k] * P.cs[k].strength;
+    if (a < 0.01) continue;
+    const code = P.cs[k].code;
+    for (let q = 0; q < code.length; q++) if (code[q] > 0) { const x = Math.min(1, a * code[q]); if (x > P.e[q]) P.e[q] = x; }
+  }
+  // 3) 구획별 도파민: MBON마다 자기 계열 DAN의 평균 발화율. 무조건 자극이 없을 땐 그 수준을
+  //    '평소'로 따라가고(전뇌 점화로 오른 DAN 활동은 학습 신호가 아니다), 있을 땐 고정해 둔 평소보다
+  //    오른 만큼만 학습 신호로 친다.
+  const usOn = { PAM: !!(stimActive['us-pam'] || stimActive['rew-good']), PPL1: !!(stimActive['us-ppl1'] || stimActive['rew-bad']) };
+  const bDec = Math.exp(-dt / 1);
+  let anyDan = false;
+  for (let q = 0; q < P.mbon.length; q++) {
+    const ds = P.famDan[q];
+    if (!ds.length) { P.g[q] = 0; continue; }
+    let s = 0;
+    for (let d = 0; d < ds.length; d++) s += spkWin[ds[d]];
+    const hz = (P.danHz[q] += DAN_SMOOTH * (s / ds.length / dt - P.danHz[q]));
+    if (!usOn[P.fam[q]]) { P.danBase[q] = Math.max(hz, P.danBase[q] * bDec); P.g[q] = 0; continue; }
+    const gq = Math.max(0, Math.min(1, (hz - P.danBase[q] - DAN_MARGIN) / DAN_SPAN));
+    P.g[q] = gq; if (gq > 0) anyDan = true;
+  }
+  // 4) KC → MBON: 함께 → 억압, 도파민만 → 회복, 아주 느린 망각
+  const fg = dt / FORGET_TAU;
+  for (let s = 0; s < P.synJ.length; s++) {
+    const j = P.synJ[s], o = orig[j];
+    let r = weights[j] / o;
+    if (anyDan) {
+      const gq = P.g[P.synM[s]];
+      if (gq > 0) {
+        const ek = P.e[P.synK[s]];
+        if (ek > 0.02) r -= LTD * gq * ek;
+        else r += LTP * gq * (1 - r);
+      }
+    }
+    if (r !== 1) r += (1 - r) * fg;
+    if (r < W_FLOOR_MB) r = W_FLOOR_MB; else if (r > 1) r = 1;
+    if (Math.abs(r - 1) < 1e-4) r = 1;
+    weights[j] = o * r;
+  }
+  // 5) 내성
+  P.tolE += (TOL_UP * ethanol * (TOL_MAX - P.tolE) - TOL_DOWN * P.tolE) * dt;
+  P.tolN += (TOL_UP * nicotine * (TOL_MAX - P.tolN) - TOL_DOWN * P.tolN) * dt;
+  // 6) 무조건 자극(US) → 도파민: 단맛·적당한 취기 → 보상(PAM), 쓴맛 → 처벌(PPL1).
+  //    이 모델 연결만으로는 맛 뉴런이 PAM을 충분히 켜지 못해 직접 넣는다 (맛 뉴런이 지치면 약해짐).
+  const effE = ethanol * (1 - P.tolE);
+  const ethRew = effE > 0.02 ? Math.max(0, 1 - Math.abs(effE - 0.3) / 0.3) : 0;   // 알딸딸할 때 가장 크다
+  const pamHz = Math.max(stimActive.sugar ? US_SUGAR * habOf('sugar') : 0, US_ETH * ethRew);
+  const pplHz = stimActive.bitter ? US_BITTER * habOf('bitter') : 0;
+  setUS('us-pam', P.pam, pamHz); setUS('us-ppl1', P.ppl1, pplHz);
+  P.us.pam = pamHz; P.us.ppl1 = pplHz;
+  spkWin.fill(0);
+  if (++P.win % 4 === 0) postMessage({ type: 'plasticStats', ...plasticStats() });
+}
+
+function setUS(key, idx, hz) {
+  if (hz > 0.5) stimActive[key] = { idx, rate: hz };
+  else delete stimActive[key];
+}
+
+// KC 가중 벡터 w로 본 기억: 좋아함(회피 MBON 입력이 준 비율) − 싫어함(다가가기 MBON 입력이 준 비율)
+function memoryFor(w) {
+  const P = pl;
+  let lA = 0, oA = 0, lP = 0, oP = 0;
+  for (let s = 0; s < P.synJ.length; s++) {
+    const wk = w[P.synK[s]];
+    if (!(wk > 0)) continue;
+    const j = P.synJ[s], loss = (orig[j] - weights[j]) / orig[j];   // 0..0.85
+    if (P.val[P.synM[s]] < 0) { lA += wk * loss; oA += wk; } else { lP += wk * loss; oP += wk; }
+  }
+  const sat = 1 - W_FLOOR_MB;
+  const like = oA ? lA / oA / sat : 0, dislike = oP ? lP / oP / sat : 0;
+  return { like, dislike, pref: like - dislike };
+}
+
+function plasticStats() {
+  const P = pl;
+  const hab = {};
+  for (const k in P.sens) hab[k] = 1 - habOf(k);
+  const mem = {};
+  for (const k in P.cs) mem[k] = { ...memoryFor(P.cs[k].code), strength: P.cs[k].strength, act: P.act[k] || 0 };
+  let eSum = 0;
+  for (let q = 0; q < P.e.length; q++) eSum += P.e[q];
+  const live = eSum > 2 ? memoryFor(P.e) : { like: 0, dislike: 0, pref: 0 };
+  let memSyn = 0;
+  for (let s = 0; s < P.synJ.length; s++) if (weights[P.synJ[s]] / orig[P.synJ[s]] < 0.98) memSyn++;
+  let habSyn = 0, habN = 0;
+  for (let q = 0; q < P.sIdx.length; q++) if (P.hg[q] < 0.95) { habN++; habSyn += indptr[P.sIdx[q] + 1] - indptr[P.sIdx[q]]; }
+  const dan = {};
+  for (const f of ['PAM', 'PPL1']) {
+    let hz = 0, base = 0, g = 0, c = 0;
+    for (let q = 0; q < P.mbon.length; q++) if (P.fam[q] === f && P.famDan[q].length) { hz += P.danHz[q]; base += P.danBase[q]; g += P.g[q]; c++; }
+    dan[f] = { hz: hz / c, base: base / c, g: g / c };
+  }
+  return { hab, mem, live: { ...live, kc: eSum }, tolE: P.tolE, tolN: P.tolN, dan,
+           memSyn, memTotal: P.synJ.length, habN, habSyn, us: { ...P.us } };
+}
+
+function plasticReset(what) {
+  const P = pl;
+  if (!P) return;
+  if (what === 'all' || what === 'mem') {
+    for (let s = 0; s < P.synJ.length; s++) weights[P.synJ[s]] = orig[P.synJ[s]];
+    P.e.fill(0);
+  }
+  if (what === 'all' || what === 'hab') { P.hg.fill(1); for (let q = 0; q < P.sIdx.length; q++) if (P.hgOn[q] !== 1) applyHab(q); }
+  if (what === 'all' || what === 'tol') { P.tolE = 0; P.tolN = 0; }
+  postMessage({ type: 'plasticStats', ...plasticStats() });
+}
+
+// 오래 가는 기억만 저장: KC → MBON 세기(원래와 다른 것)와 내성. 습관화는 단기라 저장하지 않는다.
+function exportMem() {
+  const P = pl;
+  if (!P) return { idx: new Uint32Array(0), val: new Float32Array(0), tolE: 0, tolN: 0 };
+  const idx = [], val = [];
+  for (let s = 0; s < P.synJ.length; s++) { const j = P.synJ[s]; if (weights[j] !== orig[j]) { idx.push(j); val.push(weights[j]); } }
+  return { idx: Uint32Array.from(idx), val: Float32Array.from(val), tolE: P.tolE, tolN: P.tolN };
+}
+
+function importMem(m) {
+  const P = pl;
+  if (!P) return 0;
+  for (let s = 0; s < P.synJ.length; s++) weights[P.synJ[s]] = orig[P.synJ[s]];
+  const ok = new Set(P.synJ);
+  let k = 0;
+  const idx = m.idx || [], val = m.val || [];
+  for (let q = 0; q < idx.length; q++) {
+    const j = idx[q];
+    if (!ok.has(j)) continue;
+    weights[j] = orig[j] * Math.max(W_FLOOR_MB, Math.min(1, val[q] / orig[j]));
+    k++;
+  }
+  P.tolE = Math.max(0, Math.min(TOL_MAX, +m.tolE || 0));
+  P.tolN = Math.max(0, Math.min(TOL_MAX, +m.tolN || 0));
+  postMessage({ type: 'plasticStats', ...plasticStats() });
+  return k;
 }

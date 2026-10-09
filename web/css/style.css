@@ -21,6 +21,7 @@
   --cool: #8cc8f5;
   --hot: #ff8b78;
   --hot-soft: rgba(255, 139, 120, 0.13);
+  --good: #8fd6a4;
   --font-ui: 'IBM Plex Sans KR', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif;
   /* 한글은 고정폭 글꼴에 없으므로 Plex Sans KR로 이어 받는다 (시스템 기본 글꼴로 새지 않게) */
   --font-data: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'IBM Plex Sans KR', 'Apple SD Gothic Neo', monospace;
@@ -502,3 +503,29 @@ body.arena-open #lab-card, body.arena-open header { display: none; }
 
 /* 경기장 버튼 5개를 3칸에: 마지막 '멈춤'이 두 칸을 차지해 빈 칸이 없게 */
 .row.row3 #omok-stop { grid-column: span 2; }
+
+/* ── 경험과 변화 ── */
+#exp .note { font-size: var(--fs-xs); margin: 6px 0 4px; }
+.meters { display: grid; gap: 7px; }
+.meter { display: grid; grid-template-columns: 34px minmax(0, 1fr) 66px; align-items: center; gap: 8px; font-size: var(--fs-s); }
+.m-name { color: var(--dim); white-space: nowrap; }
+.m-track { position: relative; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.m-track i { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 3px; background: var(--accent-line);
+             transition: width .4s, left .4s; }
+.meter.two .m-track::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line-strong); }
+.meter.like .m-track i { background: var(--good); }
+.meter.dislike .m-track i { background: var(--hot); }
+.m-val { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+.meter.like .m-val { color: var(--good); }
+.meter.dislike .m-val { color: var(--hot); }
+.meter.one .m-track i { background: var(--accent); opacity: .8; }
+.hab-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; }
+.hab { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; font-size: var(--fs-xs); color: var(--dim); }
+.hab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hab b { font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; }
+.hab i { grid-column: 1 / -1; height: 3px; margin-top: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.hab u { display: block; height: 100%; width: 0; background: var(--cool); opacity: .75; transition: width .4s; }
+.hab.dim { opacity: .55; }
+.exp-line { margin-top: 12px; font-size: var(--fs-xs); color: var(--faint); font-variant-numeric: tabular-nums; }
+#exp .save-line { margin: 4px 0 8px; font-size: var(--fs-xs); }
+.reset-btn.warn { color: var(--hot); border-color: rgba(255, 139, 120, .55); background: var(--hot-soft); }

@@ -134,7 +134,8 @@
 
   <section>
     <h2>감각 자극</h2>
-    <p class="hint">버튼을 눌러 실제 감각 뉴런을 자극해 보세요. 활동이 뇌 전체로 퍼집니다.</p>
+    <p class="hint">버튼을 눌러 실제 감각 뉴런을 자극해 보세요. 활동이 뇌 전체로 퍼집니다.
+      설탕맛·쓴맛은 맛 뉴런과 함께 보상(PAM)·처벌(PPL1) 도파민 뉴런도 켭니다. 이 모델의 연결만으로는 맛에서 도파민까지 신호가 약해서입니다.</p>
     <div id="stimuli"></div>
     <label>자극 강도 <span id="rate-val">50 Hz</span>
       <input id="rate" type="range" min="5" max="200" value="50">
@@ -151,6 +152,22 @@
     <label>니코틴 <span id="nic-val">안 피움</span>
       <input id="nicotine" type="range" min="0" max="100" value="0">
     </label>
+  </section>
+
+  <section id="exp">
+    <h2>경험과 변화</h2>
+    <p class="hint">자극이 쌓이면 뇌가 바뀝니다. 실제 초파리에서 수 분에서 며칠 걸리는 변화를 시뮬레이션 시간 몇 초로 압축했습니다.</p>
+    <p class="sub">냄새 기억 · 버섯체 KC→MBON 시냅스</p>
+    <div id="mem-rows" class="meters"></div>
+    <p class="hint note">냄새를 켠 채 <b>설탕맛</b>을 누르면 그 냄새를 좋아하게 되고, <b>쓴맛</b>을 누르면 싫어하게 됩니다.
+      알딸딸하게 취한 채 맡은 냄새도 좋아하게 됩니다. 냄새를 켜면 방에 바나나 조각이 놓이고, 초파리는 배운 대로 다가가거나 피합니다.</p>
+    <p class="sub">습관화 · 계속 받은 감각은 둔해지고, 쉬면 돌아옵니다</p>
+    <div id="hab-grid" class="hab-grid"></div>
+    <p class="sub">내성 · 같은 양에 덜 취합니다</p>
+    <div id="tol-rows" class="meters"></div>
+    <p class="exp-line" id="exp-line"></p>
+    <p class="hint save-line" id="exp-save"></p>
+    <button id="exp-reset" class="reset-btn">경험 초기화</button>
   </section>
 
   <section>
