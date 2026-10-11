@@ -6,3 +6,6 @@ venv/
 public/
 .claude/
 .mcp.json
+
+# 캐치알람 앱 (APK·소스, 서버와 무관)
+catch-alarm/
