@@ -5,3 +5,9 @@ __pycache__/
 *.pyc
 public/
 .vercel/
+
+# 앱 서명 키는 올리지 않는다
+*.p12
+*.jks
+*.keystore
+catch-alarm/build/
