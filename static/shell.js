@@ -302,16 +302,6 @@
         });
       });
     });
-
-    // 화면을 보고 있는 동안 2분마다 서버에 알린다 — 팀 오피스의 '접속 중' 표시용
-    var lastPing = Date.now();
-    var ping = function () {
-      if (document.visibilityState !== "visible" || Date.now() - lastPing < 60 * 1000) return;
-      lastPing = Date.now();
-      fetch("/api/ping", { credentials: "same-origin", headers: { "X-Hana": "1" } }).catch(function () {});
-    };
-    window.setInterval(ping, 2 * 60 * 1000);
-    document.addEventListener("visibilitychange", ping);
   }
 
   /* ---------- 복제되지 않은 메뉴 ---------- */

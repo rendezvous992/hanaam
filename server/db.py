@@ -180,11 +180,6 @@ USER_COLUMNS = {
     "must_change": "INTEGER NOT NULL DEFAULT 0",
     "last_login_at": "TEXT",
     "calendar_token": "TEXT",
-    # 팀 오피스: 마지막으로 화면을 쓴 때, 내가 정한 상태(회의 중·외근 등)와 한 줄 메모, 그 상태가 유효한 마지막 날(KST)
-    "seen_at": "TEXT",
-    "work_state": "TEXT NOT NULL DEFAULT ''",
-    "work_note": "TEXT NOT NULL DEFAULT ''",
-    "work_until": "TEXT NOT NULL DEFAULT ''",
 }
 
 

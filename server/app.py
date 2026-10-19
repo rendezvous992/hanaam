@@ -55,15 +55,6 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _iso_ago(seconds: int) -> str:
-    """now_iso() 와 같은 모양의 '몇 초 전' 시각 (문자열 크기 비교용)"""
-    return (datetime.now(timezone.utc) - timedelta(seconds=seconds)).isoformat(timespec="seconds")
-
-
-SEEN_EVERY = 60  # 접속 기록 간격(초)
-ONLINE_SECONDS = 300  # 이 시간 안에 화면을 쓴 사람은 '접속 중'
-
-
 # ---------------------------------------------------------------------------
 # 비밀번호 · 세션
 # ---------------------------------------------------------------------------
@@ -115,13 +106,9 @@ def session_user(request: Request):
     if token:
         with connect() as conn:
             user = conn.one(
-                "SELECT u.*, s.seen_at AS session_seen FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'active'",
+                "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'active'",
                 (_token_hash(token), int(time.time())),
             )
-            # 팀 오피스의 '접속 중' 표시용. 매 요청마다 쓰지 않고 1분에 한 번만 기록한다
-            if user is not None and (user["session_seen"] or "") < _iso_ago(SEEN_EVERY):
-                conn.execute("UPDATE sessions SET seen_at = ? WHERE token_hash = ?", (now_iso(), _token_hash(token)))
-                conn.execute("UPDATE users SET seen_at = ? WHERE id = ?", (now_iso(), user["id"]))
     request.state.user = user
     return user
 
@@ -222,7 +209,7 @@ app = FastAPI(title="업무공간", docs_url=None, redoc_url=None, openapi_url=N
 init_db()
 
 # 비밀번호를 바꾸기 전에도 쓸 수 있는 API
-_MUST_CHANGE_OK = {"/api/me", "/api/password", "/api/logout", "/api/profile", "/api/ping"}
+_MUST_CHANGE_OK = {"/api/me", "/api/password", "/api/logout", "/api/profile"}
 
 
 @app.middleware("http")
@@ -588,86 +575,6 @@ def api_user_names(request: Request) -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.all("SELECT id, username, display_name, department FROM users WHERE status = 'active' ORDER BY display_name")
     return [{"id": r["id"], "username": r["username"], "displayName": r["display_name"], "department": r["department"] or ""} for r in rows]
-
-
-# --- 팀 오피스: 누가 접속해 있고 지금 무엇을 하는지 -------------------------------------
-
-WORK_STATES = {"working": "업무 중", "focus": "집중 근무", "meeting": "회의 중", "visit": "외근·탐방", "away": "자리 비움", "leave": "휴가"}
-
-
-def _kst_day_start_utc(day) -> str:
-    """KST 날짜의 0시를 now_iso() 와 같은 UTC 문자열로"""
-    start = datetime(day.year, day.month, day.day, tzinfo=KST)
-    return start.astimezone(timezone.utc).isoformat(timespec="seconds")
-
-
-def _team_member(row, me_id: int, online: set, today: str, notes: dict) -> dict[str, Any]:
-    valid = bool(row["work_until"]) and row["work_until"] >= today
-    stat = notes.get(row["id"], {})
-    return {
-        "id": row["id"], "displayName": row["display_name"], "department": row["department"] or "",
-        "roleLabel": ROLE_LABEL.get(row["role"], "일반"), "me": row["id"] == me_id,
-        "online": row["id"] in online, "lastSeenAt": row["seen_at"] or row["last_login_at"],
-        "state": row["work_state"] if valid else "", "stateLabel": WORK_STATES.get(row["work_state"], "") if valid else "",
-        "note": row["work_note"] if valid else "", "until": row["work_until"] if valid else "",
-        "notesToday": stat.get("today", 0), "notesWeek": stat.get("week", 0), "lastNote": stat.get("last"),
-    }
-
-
-def _team(conn, me_id: int) -> list[dict[str, Any]]:
-    now_kst = datetime.now(KST)
-    today = now_kst.date()
-    since_today = _kst_day_start_utc(today)
-    since_week = _kst_day_start_utc(today - timedelta(days=today.weekday()))
-    rows = conn.all("SELECT * FROM users WHERE status = 'active' ORDER BY display_name")
-    online = {r["user_id"] for r in conn.all("SELECT DISTINCT user_id FROM sessions WHERE expires_at > ? AND seen_at >= ?",
-                                             (int(time.time()), _iso_ago(ONLINE_SECONDS)))}
-    notes: dict[int, dict[str, Any]] = {}
-    for n in conn.all("SELECT id, company, title, created_by, created_at FROM notes WHERE created_by IS NOT NULL AND created_at >= ? ORDER BY created_at",
-                      (since_week,)):
-        s = notes.setdefault(n["created_by"], {"today": 0, "week": 0})
-        s["week"] += 1
-        s["today"] += 1 if n["created_at"] >= since_today else 0
-        s["last"] = {"id": n["id"], "company": n["company"], "title": n["title"], "at": n["created_at"]}
-    return [_team_member(r, me_id, online, today.isoformat(), notes) for r in rows]
-
-
-@app.get("/api/team")
-def api_team(request: Request) -> dict[str, Any]:
-    user = require_user(request)
-    with connect() as conn:
-        members = _team(conn, user["id"])
-    return {"members": members, "states": WORK_STATES, "onlineMinutes": ONLINE_SECONDS // 60, "now": now_iso()}
-
-
-@app.put("/api/team/me")
-async def api_team_me(request: Request) -> dict[str, Any]:
-    """내 상태 바꾸기. 상태·메모는 '언제까지'(기본 오늘) 지나면 저절로 사라진다."""
-    user = require_user(request)
-    data = await _json(request)
-    state = str(data.get("state") or "")
-    note = str(data.get("note") or "").strip()[:80]
-    if state and state not in WORK_STATES:
-        raise HTTPException(400, "상태 값이 올바르지 않습니다.")
-    today = datetime.now(KST).date()
-    until = str(data.get("until") or today.isoformat())
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", until):
-        raise HTTPException(400, "날짜 형식이 올바르지 않습니다.")
-    if until < today.isoformat() or until > (today + timedelta(days=60)).isoformat():
-        raise HTTPException(400, "'언제까지'는 오늘부터 60일 안으로 정해 주세요.")
-    if not state and not note:
-        until = ""
-    with connect() as conn:
-        conn.execute("UPDATE users SET work_state = ?, work_note = ?, work_until = ? WHERE id = ?", (state, note, until, user["id"]))
-        members = _team(conn, user["id"])
-    return next(m for m in members if m["me"])
-
-
-@app.get("/api/ping")
-def api_ping(request: Request) -> dict[str, Any]:
-    """열어 둔 화면이 몇 분마다 부른다 — 팀 오피스의 '접속 중' 표시용 (기록은 session_user 가 한다)"""
-    require_user(request)
-    return {"ok": True}
 
 
 # --- 노트 ------------------------------------------------------------------------
@@ -1208,7 +1115,7 @@ integrations.register(app, require_user, has_feature, connect)
 # --- 화면과 정적 파일 ------------------------------------------------------------------
 
 PAGE_DIRS = {"notes", "calendar", "ndr", "events", "morning", "ops", "portfolio", "company", "research", "settings", "admin", "home",
-             "static", "requests", "market", "account", "workload", "stats", "telegram", "team"}
+             "static", "requests", "market", "account", "workload", "stats", "telegram"}
 ASSET_TYPES = {".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon"}
 PUBLIC_PAGES = {"login": "login.html", "signup": "signup.html"}
 

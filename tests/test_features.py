@@ -190,50 +190,7 @@ check("IR 캘린더에 일정 저장", r.status_code == 201, r.text)
 check("IR 캘린더 조회", len(c.get("/api/c/ir-events").json()) == 1)
 
 print("")
-print("[8] 팀 오피스 (접속 중 · 내 상태 · 이번 주 노트)")
-from datetime import datetime, timedelta, timezone
-from server.db import connect as db_connect
-today = datetime.now(timezone(timedelta(hours=9))).date()
-r = c.get("/api/team")
-team = r.json()
-check("팀 목록 조회", r.status_code == 200 and len(team["members"]) == 3, r.text)
-check("비밀번호 해시는 내보내지 않음", "scrypt" not in r.text and "password" not in r.text)
-boss = [m for m in team["members"] if m["me"]]
-check("내 항목 표시", len(boss) == 1 and boss[0]["displayName"] == "김대표", boss)
-check("쓰고 있는 사람은 접속 중", boss[0]["online"], boss)
-kim3 = [m for m in team["members"] if m["displayName"] == "김연구"][0]
-check("로그인한 적 없는 사람은 접속 중 아님", not kim3["online"] and not kim3["lastSeenAt"], kim3)
-check("이번 주 노트 수·최근 노트", boss[0]["notesWeek"] >= 1 and boss[0]["notesToday"] >= 1 and boss[0]["lastNote"]["company"] == "삼성전자", boss[0])
-with db_connect() as conn:
-    conn.execute("UPDATE sessions SET seen_at = ? WHERE user_id = (SELECT id FROM users WHERE username = 'park')",
-                 ((datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat(timespec="seconds"),))
-park = [m for m in c.get("/api/team").json()["members"] if m["displayName"] == "박주임"][0]
-check("30분 동안 안 쓴 사람은 접속 중 아님", not park["online"] and park["lastSeenAt"], park)
-check("다시 쓰면 접속 중", c2.get("/api/ping").status_code == 200 and [m for m in c.get("/api/team").json()["members"] if m["displayName"] == "박주임"][0]["online"])
-r = c.put("/api/team/me", json={"state": "meeting", "note": "주간 운용 회의"}, headers=J)
-check("내 상태 저장 (기본 오늘까지)", r.status_code == 200 and r.json()["stateLabel"] == "회의 중" and r.json()["until"] == today.isoformat(), r.text)
-seen = [m for m in c2.get("/api/team").json()["members"] if m["displayName"] == "김대표"][0]
-check("다른 사람에게도 보임", seen["state"] == "meeting" and seen["note"] == "주간 운용 회의" and not seen["me"], seen)
-r = c.put("/api/team/me", json={"state": "nap"}, headers=J)
-check("모르는 상태 거절", r.status_code == 400, r.text)
-r = c.put("/api/team/me", json={"state": "leave", "until": (today - timedelta(days=1)).isoformat()}, headers=J)
-check("지난 날짜 거절", r.status_code == 400, r.text)
-r = c.put("/api/team/me", json={"state": "leave", "until": (today + timedelta(days=3)).isoformat()}, headers=J)
-check("휴가 며칠 이어서", r.status_code == 200 and r.json()["state"] == "leave", r.text)
-with db_connect() as conn:
-    conn.execute("UPDATE users SET work_until = ? WHERE username = 'boss'", ((today - timedelta(days=1)).isoformat(),))
-me2 = [m for m in c.get("/api/team").json()["members"] if m["me"]][0]
-check("기한 지난 상태는 저절로 사라짐", me2["state"] == "" and me2["note"] == "", me2)
-r = c.put("/api/team/me", json={"state": "", "note": ""}, headers=J)
-check("상태 지우기", r.status_code == 200 and r.json()["state"] == "" and r.json()["until"] == "", r.text)
-r = c.put("/api/team/me", json={"state": "working"})
-check("전용 헤더 없는 상태 변경 = CSRF 차단", r.status_code == 403, r.text)
-r = c.get("/team/")
-check("팀 오피스 화면", r.status_code == 200 and "팀 오피스" in r.text and 'content="server"' in r.text, r.status_code)
-check("모든 화면 메뉴에 팀 오피스", 'href="/team/"' in c.get("/notes/").text)
-
-print("")
-print("[9] 구글 캘린더 구독 · 로그아웃")
+print("[8] 구글 캘린더 구독 · 로그아웃")
 r = c.post("/api/calendar-link", json={}, headers=J)
 check("구독 주소 발급", r.status_code == 200 and ".ics" in r.json().get("url", ""), r.text)
 token = r.json()["url"].rsplit("/", 1)[-1].replace(".ics", "")
