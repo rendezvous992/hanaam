@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html data-hana-sidebar="expanded" lang="ko"><head><meta content="text/html; charset=utf-8" http-equiv="Content-Type"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="light" name="color-scheme"/>
+<meta content="#00857b" name="theme-color"/>
+<title>팀 오피스 · 업무공간</title>
+<link href="/static/app-icon.svg" rel="icon" type="image/svg+xml"/>
+
+<link href="/static/shell.css" rel="stylesheet"/>
+<link href="/team/static/styles.css" rel="stylesheet"/>
+<link href="/static/tenant.css" rel="stylesheet"/>
+<script>try{if(localStorage.getItem("hana.sidebar")==="collapsed")document.documentElement.setAttribute("data-hana-sidebar","collapsed")}catch(e){}</script></head>
+<body class="hana-workspace">
+<a class="hana-skip-link" href="#hana-main">본문으로 바로가기</a>
+<div class="hana-shell">
+<aside aria-hidden="false" aria-label="업무 메뉴" class="hana-sidebar" id="hana-navigation">
+<nav aria-label="주요 메뉴" class="hana-nav">
+<a class="hana-nav-link" href="/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="m3 10 9-7 9 7M5 9v11h5v-6h4v6h5V9"></path>
+</svg><span>홈</span>
+</a>
+<details class="hana-nav-group">
+<summary class="hana-nav-link">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<rect height="16" rx="2" width="16" x="4" y="5"></rect><path d="M8 3v4m8-4v4M4 10h16M8 14h2m4 0h2m-8 3h2"></path>
+</svg><span>IR 캘린더</span><svg aria-hidden="true" class="hana-nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
+</summary>
+<div class="hana-nav-children">
+<a class="hana-nav-child" href="/calendar/">IR 캘린더</a>
+<a class="hana-nav-child" href="/ndr/">미확정 일정</a>
+</div>
+</details>
+<details class="hana-nav-group">
+<summary class="hana-nav-link">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<rect height="16" rx="2" width="16" x="4" y="5"></rect><path d="M8 3v4m8-4v4M4 10h16M8 14h2m4 0h2m-8 3h2"></path>
+</svg><span>이벤트 캘린더</span><svg aria-hidden="true" class="hana-nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
+</summary>
+<div class="hana-nav-children">
+<a class="hana-nav-child" href="/events/economic/">경제 캘린더</a>
+<a class="hana-nav-child" href="/events/">기업·테마 이벤트</a>
+</div>
+</details>
+<a class="hana-nav-link" href="/notes/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="M14 3H5v18h14V8Zm0 0v5h5M8 12h8m-8 4h6"></path>
+</svg><span>노트</span>
+</a>
+<a aria-current="page" class="hana-nav-link is-active" href="/team/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<circle cx="9" cy="8" r="3"></circle><path d="M3 20v-1a6 6 0 0 1 12 0v1"></path><circle cx="17.5" cy="9" r="2.5"></circle><path d="M16.5 14.6A5 5 0 0 1 22 19.5v.5"></path>
+</svg><span>팀 오피스</span>
+</a>
+<a class="hana-nav-link" href="/workload/">워크로드</a>
+<a class="hana-nav-link" href="/stats/">노트 통계</a>
+<a class="hana-nav-link" href="/research/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="m12 3 2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2ZM19 3v4m-2-2h4"></path>
+</svg><span>AI 리서치</span>
+</a>
+<a class="hana-nav-link" href="/morning/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"></path>
+</svg><span>아침회의</span>
+</a>
+<a class="hana-nav-link" href="/ops/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<rect height="14" rx="2" width="18" x="3" y="7"></rect><path d="M8 7V3h8v4M3 12h18m-11 0v3h4v-3"></path>
+</svg><span>운용 현황 및 계획</span>
+</a>
+<a class="hana-nav-link" href="/requests/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="M4 4h16v13H9l-5 4ZM8 8h8m-8 5h5"></path>
+</svg><span>개선요청</span>
+</a>
+<p class="hana-nav-label">INSIGHTS <span>시장 · 분석</span></p>
+<a class="hana-nav-link" href="/market/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="M3 19h18M4 15l5-6 4 3 7-8m-5 0h5v5"></path>
+</svg><span>시장</span>
+</a>
+<a class="hana-nav-link" href="/telegram/">텔레그램</a>
+<a class="hana-nav-link" href="/portfolio/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="M3 20h18M6 16v-4m6 4V5m6 11V9"></path><path d="m4 8 5-4 5 2 6-4"></path>
+</svg><span>포트폴리오 분석</span>
+</a>
+<details class="hana-nav-group">
+<summary class="hana-nav-link">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="M4 21V4h10v17m0-12h6v12M8 8h2m-2 4h2m-2 4h2m7-3h1m-1 4h1M2 21h20"></path>
+</svg><span>종목 분석</span><svg aria-hidden="true" class="hana-nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
+</summary>
+<div class="hana-nav-children">
+<a class="hana-nav-child" href="/company/">종목 분석</a>
+<a class="hana-nav-child" href="/company/discover/">종목 발굴</a>
+</div>
+</details>
+<a class="hana-nav-link" href="/settings/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<circle cx="12" cy="12" r="3"></circle><path d="m9 3-1 3-3 1-2 3 2 2v4l3 2 3-1 3 1 3-2v-4l2-2-2-3-3-1-1-3Z"></path>
+</svg><span>Setting</span>
+</a>
+<a class="hana-nav-link" href="/admin/users/">
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<circle cx="9" cy="8" r="3"></circle><path d="M3 20v-2a6 6 0 0 1 12 0v2m3-13v6m-3-3h6"></path>
+</svg><span>계정 관리</span>
+</a>
+</nav>
+<div class="hana-sidebar-footer">
+<button aria-controls="hana-navigation" aria-expanded="true" aria-label="메뉴 접기" class="hana-sidebar-fold" data-hana-toggle="" title="메뉴 접기 · Alt+S" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="m14 6-6 6 6 6m5-14v16"></path>
+</svg><span>메뉴 접기</span><kbd>Alt S</kbd></button>
+<a class="hana-account" href="/account/">
+<span aria-hidden="true" class="hana-user-avatar">사</span>
+<span class="hana-account-copy"><strong>사용자</strong><small>계정 관리자 · 미지정</small></span>
+<svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<circle cx="9" cy="8" r="3"></circle><path d="M3 20v-2a6 6 0 0 1 12 0v2m3-13v6m-3-3h6"></path>
+</svg>
+</a>
+<form action="#" data-hana-stub-form="" method="post"><button class="hana-signout" type="submit"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="M10 4H4v16h6m4-13 5 5-5 5m-6-5h11"></path>
+</svg>로그아웃</button></form>
+</div>
+</aside>
+<div class="hana-content">
+<header class="hana-topbar">
+<div class="hana-topbar-heading">
+<button aria-controls="hana-navigation" aria-expanded="true" aria-label="메뉴 접기" class="hana-menu-toggle" data-hana-toggle="" type="button"><svg aria-hidden="true" class="hana-icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65" viewBox="0 0 24 24">
+<path d="M4 6h16M4 12h16M4 18h16"></path>
+</svg></button>
+<span class="hana-breadcrumb"><strong>팀 오피스</strong></span>
+</div>
+<div class="hana-topbar-meta"><time aria-label="한국 시간" data-hana-clock="" datetime="2026-09-23T06:23:07.335Z">2026. 09. 23. (수) 15:23 KST</time><a href="/account/">사용자</a></div>
+</header>
+<main class="site-main" id="hana-main" tabindex="-1">
+<div class="page tm" id="team-root">
+<header class="tm-head">
+<div><h1>팀 오피스</h1><p>누가 접속해 있고 지금 무엇을 하는지 사무실 화면으로 봅니다. 내 상태를 바꾸면 팀원 모두에게 보입니다.</p></div>
+<div class="tm-head__actions"><button class="btn btn--primary" id="tm-set" type="button">내 상태 바꾸기</button></div>
+</header>
+<div class="tm-notice" id="tm-notice" hidden></div>
+<div class="tm-toolbar">
+<select class="input input--compact" id="tm-dept" aria-label="본부"><option value="">전체 본부</option></select>
+<div class="tm-summary" id="tm-summary"></div>
+<span class="tm-updated" id="tm-updated"></span>
+</div>
+<section class="tm-office" aria-label="사무실 배치도">
+<div class="tm-scene" id="tm-scene"></div>
+</section>
+<p class="tm-scroll-hint">옆으로 밀면 회의실·라운지·AI 룸이 보입니다.</p>
+<section class="tm-dock" id="tm-dock" aria-label="팀원 목록"></section>
+<p class="tm-legend" id="tm-legend"></p>
+</div>
+</main>
+</div>
+</div>
+<script src="/static/shell.js"></script>
+<script src="/static/kit.js"></script>
+<script src="/team/static/app.js"></script>
+</body></html>
